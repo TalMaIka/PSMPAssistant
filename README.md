@@ -2,7 +2,12 @@
 
 ## Description
 
-This Python tool provides functionality to check compatibility between the installed version of a proprietary software (PSMP) and various Linux distributions. It retrieves the installed PSMP version and the Linux distribution version, then checks if the combination is supported based on a predefined set of compatibility rules.
+PSMPChecker is a Python tool designed to streamline the process of verifying compatibility between the installed version of a proprietary software known as PSMP (Privileged Session Management Proxy) and various Linux distributions.
+
+This tool automates the retrieval of the installed PSMP version and the version of the Linux distribution in use. It then cross-references this information with a predefined set of compatibility rules stored in a JSON file to determine if the combination is officially supported.
+
+PSMPChecker provides clear insights into whether the current PSMP version is compatible with the installed Linux distribution, enabling system administrators and IT professionals to make informed decisions regarding software updates and system configurations.
+
 
 ## Installation
 
