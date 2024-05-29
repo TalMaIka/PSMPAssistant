@@ -44,7 +44,7 @@ def is_supported(psmp_versions, psmp_version, distro_name, distro_version):
 def check_service_status():
     try:
         # Run the systemctl status command for the specified service
-        result = subprocess.run(['systemctl', 'status', "psmppsrv"], capture_output=True, text=True, check=True)
+        result = subprocess.run(['systemctl', 'status', "psmppsrv"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
         # Check the output for the service status
         if "Active: active (running)" in result.stdout:
             return "Running"
