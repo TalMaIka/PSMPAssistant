@@ -21,9 +21,12 @@ def get_installed_psmp_version():
 
 def get_linux_distribution():
     version_info = distro.version(best=True)
-    major, minor, _ = version_info.split('.', 2)
+    version_parts = version_info.split('.')
+    major = version_parts[0]
+    minor = version_parts[1] if len(version_parts) > 1 else '0'
     main_version = f"{major}.{minor}"
     return distro.name(), main_version
+
 
 def is_supported(psmp_versions, psmp_version, distro_name, distro_version):
     if psmp_version not in psmp_versions:
