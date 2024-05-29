@@ -14,6 +14,7 @@ PSMPChecker provides clear insights into whether the current PSMP version is com
 To install the dependencies required for this tool, you can use pip and the provided `requirements.txt` file. Make sure you have Python and pip installed on your system. Then, follow these steps:
 
 ```bash
-git clone https://github.com/yourusername/your-project.git
-cd your-project
-pip install -r requirements.txt
+git clone https://github.com/TalMaIka/PSMPChecker.git
+cd PSMPChecker
+pip install -r requirements.txt / [RHEL] pip3 install -r requirements.txt
+
