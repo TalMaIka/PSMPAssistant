@@ -41,6 +41,20 @@ def is_supported(psmp_versions, psmp_version, distro_name, distro_version):
                             return True
     return False
 
+def check_service_status():
+    try:
+        # Run the systemctl status command for the specified service
+        result = subprocess.run(['systemctl', 'status', "psmppsrv"], capture_output=True, text=True, check=True)
+        # Check the output for the service status
+        if "Active: active (running)" in result.stdout:
+            return "Running"
+        elif "Active: inactive (dead)" in result.stdout:
+            return "Inactive"
+        else:
+            return "Unknown"
+    except subprocess.CalledProcessError:
+        # If the systemctl command fails, return "Error"
+        return "Error"
 
 # Load PSMP versions from a JSON file
 psmp_versions = load_psmp_versions_json('src/versions.json')
@@ -63,3 +77,5 @@ if is_supported(psmp_versions, psmp_version, distro_name, distro_version):
     print(f"PSMP version {psmp_version} Supports {distro_name} {distro_version}")
 else:
     print(f"PSMP version {psmp_version} Does Not Support {distro_name} {distro_version}")
+
+print(f"Service status: {check_service_status()}")
