@@ -46,9 +46,9 @@ def is_supported(psmp_versions, psmp_version, distro_name, distro_version):
 def check_service_status():
     try:
         # Run the systemctl status command for the specified service
-        result_systemctl = subprocess.check_output("systemctl status sshd", shell=True, universal_newlines=True)
+        result_systemctl = subprocess.check_output("systemctl status psmpsrv", shell=True, universal_newlines=True)
         # Check the output for the service status
-        if "Active: active (running)" in result_systemctl:
+        if "Active: active" in result_systemctl:
             # Check if PSMP service is up and working with Vault in PSMPConsole.log
             with open("/var/opt/CARKpsmp/logs/PSMPConsole.log", "r") as log_file:
                 log_content = log_file.read()
@@ -56,13 +56,12 @@ def check_service_status():
                     return "Running and communicating with Vault"
                 else:
                     return "Running but not communicating with Vault"
-        elif "Active: inactive (dead)" in result_systemctl:
+        elif "Active: inactive" in result_systemctl:
             return "Inactive"
         else:
-            return "Unknown"
+            return "Inactive"
     except subprocess.CalledProcessError:
-        # If the systemctl command fails, return "Error"
-        return "Unknown"
+        return "Inactive"
 
 
 # Load PSMP versions from a JSON file
