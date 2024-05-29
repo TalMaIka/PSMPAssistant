@@ -76,41 +76,21 @@ def get_openssh_version():
     except subprocess.CalledProcessError as e:
         return None
 
-def get_openssl_version():
-    try:
-        # Get the version of OpenSSL installed
-        openssl_version_output = subprocess.check_output(["openssl", "version"], universal_newlines=True)
-        openssl_version_match = re.search(r"OpenSSL (\d+\.\d+\.\d+)", openssl_version_output)
-        if openssl_version_match:
-            openssl_version = openssl_version_match.group(1)
-            return openssl_version
-        else:
-            return None
-    except subprocess.CalledProcessError as e:
-        return None
 
-def check_openssh_openssl_requirement():
+def check_openssh_version():
     try:
         # Get the version of OpenSSH installed
         ssh_version = get_openssh_version()
         if ssh_version is not None:
             if ssh_version >= 7.7:
-                # Get the version of OpenSSL installed
-                openssl_version = get_openssl_version()
-                if openssl_version is not None:
-                    openssl_major_version = int(openssl_version.split('.')[0])
-                    if openssl_major_version >= 1:
-                        return True, f"OpenSSH version {ssh_version} requires OpenSSL version {openssl_version} or above.", ssh_version, openssl_version
-                    else:
-                        return False, f"OpenSSH version {ssh_version} requires OpenSSL version 1.0.1 or above, but the installed version is {openssl_version}.", ssh_version, openssl_version
-                else:
-                    return False, "Failed to determine OpenSSL version.", ssh_version, None
+                return True, f"OpenSSH version {ssh_version} meets the requirements.", ssh_version
             else:
-                return False, f"OpenSSH version {ssh_version} does not have specific OpenSSL requirements.", ssh_version, None
+                return False, f"OpenSSH version {ssh_version} does not meet the requirements.", ssh_version
         else:
-            return False, "Failed to determine OpenSSH version.", None, None
+            return False, "Failed to determine OpenSSH version.", None
     except subprocess.CalledProcessError as e:
-        return False, f"Error: {e}", None, None
+        return False, f"Error: {e}", None
+
 
 def check_sshd_config():
     sshd_config_path = "/etc/ssh/sshd_config"  # Modify this path as needed
@@ -161,10 +141,11 @@ else:
 
 print(f"Service status: {check_service_status()}")
 
-success, message, ssh_version, openssl_version = check_openssh_openssl_requirement()
+success, message, ssh_version = check_openssh_version()
 if success:
-    print("OpenSSH and OpenSSL versions meets the requirements.")
+    print("OpenSSH version meet the requirement.")
 else:
     print("Requirement not fulfilled:", message)
+    print(f"OpenSSH version: {ssh_version}")
 
 check_sshd_config()
