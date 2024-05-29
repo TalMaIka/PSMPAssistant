@@ -8,7 +8,7 @@ def load_psmp_versions_from_json(file_path):
 
 def get_installed_psmp_version():
     try:
-        result = subprocess.check_output("rpm -qa | grep -I cark", shell=True, text=True).strip()
+        result = subprocess.check_output("rpm -qa | grep -I cark", shell=True, universal_newlines=True).strip()
         if result:
             # Extract version number, assuming the result format is "cark-version"
             version = result.split('-')[1]
