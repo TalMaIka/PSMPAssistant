@@ -112,6 +112,30 @@ def check_openssh_openssl_requirement():
     except subprocess.CalledProcessError as e:
         return False, f"Error: {e}", None, None
 
+def check_sshd_config():
+    sshd_config_path = "/etc/ssh/sshd_config"  # Modify this path as needed
+    found_pmsp_auth_block = False
+    found_allow_user = False
+    
+    try:
+        with open(sshd_config_path, "r") as file:
+            lines = file.readlines()
+            for line in lines:
+                # Check for PSMP Authentication Configuration Block Start
+                if line.strip() == "# PSMP Authentication Configuration Block Start":
+                    found_pmsp_auth_block = True
+                # Check for AllowUser line
+                if line.strip().startswith("AllowUser"):
+                    found_allow_user = True
+    except FileNotFoundError:
+        print("sshd_config file not found.")
+        return
+    
+    if not found_pmsp_auth_block:
+        print("PSMP authentication block not found.")
+    if found_allow_user:
+        print("AllowUser mentioned found.")
+
 
 # Load PSMP versions from a JSON file
 psmp_versions = load_psmp_versions_json('src/versions.json')
@@ -142,3 +166,5 @@ if success:
     print("OpenSSH and OpenSSL versions meets the requirements.")
 else:
     print("Requirement not fulfilled:", message)
+
+check_sshd_config()
