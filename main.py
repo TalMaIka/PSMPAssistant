@@ -1,6 +1,7 @@
 import json
 import subprocess
 import distro
+import re
 
 def load_psmp_versions_json(file_path):
     with open(file_path, 'r') as file:
@@ -41,20 +42,28 @@ def is_supported(psmp_versions, psmp_version, distro_name, distro_version):
                             return True
     return False
 
+
 def check_service_status():
     try:
         # Run the systemctl status command for the specified service
-        result = subprocess.run(['systemctl', 'status', "psmppsrv"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        result_systemctl = subprocess.check_output("systemctl status sshd", shell=True, universal_newlines=True)
         # Check the output for the service status
-        if "Active: active (running)" in result.stdout:
-            return "Running"
-        elif "Active: inactive (dead)" in result.stdout:
+        if "Active: active (running)" in result_systemctl:
+            # Check if PSMP service is up and working with Vault in PSMPConsole.log
+            with open("/var/opt/CARKpsmp/logs/PSMPConsole.log", "r") as log_file:
+                log_content = log_file.read()
+                if "is up and working with Vault" in log_content:
+                    return "Running and communicating with Vault"
+                else:
+                    return "Running but not communicating with Vault"
+        elif "Active: inactive (dead)" in result_systemctl:
             return "Inactive"
         else:
             return "Unknown"
     except subprocess.CalledProcessError:
         # If the systemctl command fails, return "Error"
-        return "Error"
+        return "Unknown"
+
 
 # Load PSMP versions from a JSON file
 psmp_versions = load_psmp_versions_json('src/versions.json')
