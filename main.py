@@ -156,6 +156,16 @@ def logs_collect():
         "/etc/nsswitch.conf",
         "/var/opt/CARKpsmp/temp/EnvManager.log"
     ]
+    print("The logs will be collected from the following folders:\n")
+    for folder in log_folders:
+        print(folder)
+    print("\nDocs Link https://docs.cyberark.com/pam-self-hosted/latest/en/Content/PAS%20INST/The-PSMP-Environment.htm")
+    print("\nDo you wish to continue? (y/n)")
+    choice = input().lower()
+    if choice != 'y':
+        print("Logs collection aborted.")
+        return
+    
 
     # Create a folder for temporary storage
     temp_folder = "/tmp/psmp_logs"
@@ -191,11 +201,70 @@ def logs_collect():
     finally:
         # Clean up temporary folder
         shutil.rmtree(temp_folder, ignore_errors=True)
+
+def restore_sshd_config_from_backup():
+    # Path to the backup sshd_config file
+    backup_file_path = "/opt/CARKpsmp/backup/sshd_config_backup"
+
+    try:
+        # Print the content of the backup file before changing
+        print("Content of backup sshd_config file before restoring:")
+        with open(backup_file_path, "r") as backup_file:
+            print(backup_file.read())
+
+        # Ask for confirmation from the user
+        confirmation = input("Do you want to restore sshd_config from backup? (y/n): ")
+        if confirmation.lower() != "y":
+            print("Restoration aborted.")
+            return
+
+        # Run the cp command with the -i option to prompt before overwriting
+        subprocess.run(["cp", "-i", backup_file_path, "/etc/ssh/sshd_config"])
+        
+        print("Successfully restored sshd_config from backup.")
+
+    except FileNotFoundError:
+        print("Backup file not found.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+def check_sshd_debug_level():
+    sshd_config_path = "/etc/ssh/sshd_config"
+    debug3_found = False
+    
+    try:
+        with open(sshd_config_path, "r") as file:
+            lines = file.readlines()
+            for line in lines:
+                # Check for uncommented line specifying LogLevel DEBUG3
+                if line.strip() == "LogLevel DEBUG3":
+                    debug3_found = True
+    
+    except FileNotFoundError:
+        print("sshd_config file not found.")
+        sys.exit(1)
+    
+    if not debug3_found:
+        print("Debug level needs to be elevated.\nPlease ensure 'LogLevel DEBUG3' is either changed or added to the sshd_config.")
+        print("As long as in the PVWA GUI:")
+        print("1. Go to Administration → Options → Privileged Session Management → General Settings.")
+        print("2. Under Server Settings set TraceLevels=1,2,3,4,5,6,7")
+        print("3. Under Connection Client Settings set TraceLevels=1,2")
+        print("* Make sure to Save and Restart sshd and psmpsrv Services.")
+        sys.exit(1)
+
+
+
 if __name__ == "__main__":
-    # Check if the command-line argument is 'logs', then execute the function
-    if len(sys.argv) == 2 and sys.argv[1] == "logs":
-        logs_collect()
-        sys.exit(1)  # Exit after collecting logs
+    # Check if the command-line argument is 'logs' or 'restore-sshd', then execute the function
+    for arg in sys.argv:
+        if arg == "logs":
+            check_sshd_debug_level()
+            logs_collect()
+            sys.exit(1)
+        elif arg == "restore-sshd":
+            restore_sshd_config_from_backup()
+            sys.exit(1)
 
     # Load PSMP versions from a JSON file
     psmp_versions = load_psmp_versions_json('src/versions.json')
@@ -217,6 +286,7 @@ if __name__ == "__main__":
         print(f"PSMP version {psmp_version} Supports {distro_name} {distro_version}")
     else:
         print(f"PSMP version {psmp_version} Does Not Support {distro_name} {distro_version}")
+        print(f"Please refer to the PSMP documentation for supported versions.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/Content/PAS%20SysReq/System%20Requirements%20-%20PSMP.htm")
 
     # Check service status
     service_status = check_services_status()
