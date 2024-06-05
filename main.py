@@ -103,13 +103,14 @@ def check_openssh_version():
         ssh_version = get_openssh_version()
         if ssh_version is not None:
             if ssh_version >= 7.7:
-                return True , " "
+                return True, "", ssh_version
             else:
-                return False, f"[+] OpenSSH version is: {ssh_version}, required version 7.7 and above." ,ssh_version
+                return False, f"[+] OpenSSH version is: {ssh_version}, required version 7.7 and above.", ssh_version
         else:
             return False, "Failed to determine OpenSSH version.", None
     except subprocess.CalledProcessError as e:
         return False, f"Error: {e}", None
+
 
 
 def check_sshd_config():
