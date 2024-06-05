@@ -2,6 +2,12 @@ import json
 import subprocess
 import distro
 import re
+import argparse
+import os
+import shutil
+import datetime
+import zipfile
+import sys
 
 def load_psmp_versions_json(file_path):
     with open(file_path, 'r') as file:
@@ -135,38 +141,89 @@ def check_sshd_config():
     else:
         print("[+] SSH-Key auth not enabled, sshd_config missing 'PubkeyAcceptedAlgorithms'.")
 
+def logs_collect():
+    # Define folders to copy logs from
+    log_folders = [
+        "/var/log/secure",
+        "/var/log/messages",
+        "/var/opt/CARKpsmp/logs",
+        "/var/opt/CARKpsmp/logs/components",
+        "/etc/ssh/sshd_config",
+        "/etc/pam.d/sshd",
+        "/etc/pam.d/password-auth",
+        "/etc/pam.d/system-auth",
+        "/etc/nsswitch.conf",
+        "/var/opt/CARKpsmp/temp/EnvManager.log"
+    ]
 
+    # Create a folder for temporary storage
+    temp_folder = "/tmp/psmp_logs"
+    os.makedirs(temp_folder, exist_ok=True)
 
+    try:
+        # Copy logs from each folder to the temporary folder
+        for folder in log_folders:
+            if os.path.exists(folder):
+                if os.path.isdir(folder):
+                    shutil.copytree(folder, os.path.join(temp_folder, os.path.basename(folder)))
+                else:
+                    shutil.copy(folder, temp_folder)
+            else:
+                print(f"Folder not found: {folder}")
 
-# Load PSMP versions from a JSON file
-psmp_versions = load_psmp_versions_json('src/versions.json')
+        # Get the current date in the format DD.MM.YY
+        current_date = datetime.datetime.now().strftime("%m.%d.%y")
 
-# Get the installed PSMP version
-psmp_version = get_installed_psmp_version()
-if not psmp_version:
-    print("[+] No PSMP version found.")
-    exit(1)
+        # Create a zip file with the specified name format
+        zip_filename = f"PSMP_Logs_{current_date}.zip"
+        with zipfile.ZipFile(zip_filename, "w") as zipf:
+            for root, dirs, files in os.walk(temp_folder):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    zipf.write(file_path, os.path.relpath(file_path, temp_folder))
 
-# Get the Linux distribution and version
-distro_name, distro_version = get_linux_distribution()
+        print(f"Logs copied and zip file created: {zip_filename}")
 
-print(f"PSMP version: {psmp_version}")
-print(f"Linux distribution: {distro_name} {distro_version}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
+    finally:
+        # Clean up temporary folder
+        shutil.rmtree(temp_folder, ignore_errors=True)
+if __name__ == "__main__":
+    # Check if the command-line argument is 'logs', then execute the function
+    if len(sys.argv) == 2 and sys.argv[1] == "logs":
+        logs_collect()
+        sys.exit(1)  # Exit after collecting logs
 
-# Check compatibility
-if is_supported(psmp_versions, psmp_version, distro_name, distro_version):
-    print(f"PSMP version {psmp_version} Supports {distro_name} {distro_version}")
-else:
-    print(f"PSMP version {psmp_version} Does Not Support {distro_name} {distro_version}")
+    # Load PSMP versions from a JSON file
+    psmp_versions = load_psmp_versions_json('src/versions.json')
 
-# Check service status
-service_status = check_services_status()
-print(f"PSMP Service Status: {service_status.get('psmpsrv', 'Unavailable')}")
-print(f"SSHD Service Status: {service_status.get('sshd', 'Unavailable')}")
+    # Get the installed PSMP version
+    psmp_version = get_installed_psmp_version()
+    if not psmp_version:
+        print("[+] No PSMP version found.")
+        sys.exit(1)
 
-success, message, ssh_version = check_openssh_version()
-if not success:
-    print(message)
+    # Get the Linux distribution and version
+    distro_name, distro_version = get_linux_distribution()
 
-check_sshd_config()
+    print(f"PSMP version: {psmp_version}")
+    print(f"Linux distribution: {distro_name} {distro_version}")
+
+    # Check compatibility
+    if is_supported(psmp_versions, psmp_version, distro_name, distro_version):
+        print(f"PSMP version {psmp_version} Supports {distro_name} {distro_version}")
+    else:
+        print(f"PSMP version {psmp_version} Does Not Support {distro_name} {distro_version}")
+
+    # Check service status
+    service_status = check_services_status()
+    print(f"PSMP Service Status: {service_status.get('psmpsrv', 'Unavailable')}")
+    print(f"SSHD Service Status: {service_status.get('sshd', 'Unavailable')}")
+
+    success, message, ssh_version = check_openssh_version()
+    if not success:
+        print(message)
+
+    check_sshd_config()
