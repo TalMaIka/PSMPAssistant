@@ -83,9 +83,9 @@ def check_openssh_version():
         ssh_version = get_openssh_version()
         if ssh_version is not None:
             if ssh_version >= 7.7:
-                return True, f"OpenSSH version {ssh_version} meets the requirements.", ssh_version
+                return True , " "
             else:
-                return False, f"OpenSSH version {ssh_version} does not meet the requirements.", ssh_version
+                return False, f"[+] OpenSSH version is: {ssh_version}, required version 7.7 and above." ,ssh_version
         else:
             return False, "Failed to determine OpenSSH version.", None
     except subprocess.CalledProcessError as e:
@@ -96,17 +96,20 @@ def check_sshd_config():
     sshd_config_path = "/etc/ssh/sshd_config"  # Modify this path as needed
     found_pmsp_auth_block = False
     found_allow_user = False
+    found_pubkey_accepted_algorithms = False
     
     try:
         with open(sshd_config_path, "r") as file:
-            lines = file.readlines()
-            for line in lines:
+            for line in file:
                 # Check for PSMP Authentication Configuration Block Start
                 if line.strip() == "# PSMP Authentication Configuration Block Start":
                     found_pmsp_auth_block = True
                 # Check for AllowUser line
                 if line.strip().startswith("AllowUser"):
                     found_allow_user = True
+                # Check if the line contains PubkeyAcceptedAlgorithms and is uncommented
+                if "PubkeyAcceptedAlgorithms" in line and not line.strip().startswith("#"):
+                    found_pubkey_accepted_algorithms = True
     except FileNotFoundError:
         print("sshd_config file not found.")
         return
@@ -115,6 +118,10 @@ def check_sshd_config():
         print("PSMP authentication block not found.")
     if found_allow_user:
         print("AllowUser mentioned found.")
+    else:
+        print("[+] SSH-Key auth not enabled, sshd_config missing 'PubkeyAcceptedAlgorithms'.")
+
+
 
 
 # Load PSMP versions from a JSON file
@@ -123,7 +130,7 @@ psmp_versions = load_psmp_versions_json('src/versions.json')
 # Get the installed PSMP version
 psmp_version = get_installed_psmp_version()
 if not psmp_version:
-    print("No PSMP version found or PSMP is not installed.")
+    print("[+] No PSMP version found.")
     exit(1)
 
 # Get the Linux distribution and version
@@ -142,10 +149,7 @@ else:
 print(f"Service status: {check_service_status()}")
 
 success, message, ssh_version = check_openssh_version()
-if success:
-    print("OpenSSH version meet the requirement.")
-else:
-    print("Requirement not fulfilled:", message)
-    print(f"OpenSSH version: {ssh_version}")
+if not success:
+    print(message)
 
 check_sshd_config()
