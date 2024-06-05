@@ -43,25 +43,39 @@ def is_supported(psmp_versions, psmp_version, distro_name, distro_version):
     return False
 
 
-def check_service_status():
+def check_services_status():
+    service_statuses = {}
+    
+    # Check PSMP service status
     try:
-        # Run the systemctl status command for the specified service
-        result_systemctl = subprocess.check_output("systemctl status psmpsrv", shell=True, universal_newlines=True)
-        # Check the output for the service status
-        if "Active: active" in result_systemctl:
-            # Check if PSMP service is up and working with Vault in PSMPConsole.log
+        result_psmpsrv = subprocess.check_output("systemctl status psmpsrv", shell=True, universal_newlines=True)
+        if "Active: active" in result_psmpsrv:
             with open("/var/opt/CARKpsmp/logs/PSMPConsole.log", "r") as log_file:
                 log_content = log_file.read()
                 if "is up and working with Vault" in log_content:
-                    return "Running and communicating with Vault"
+                    service_statuses["psmpsrv"] = "Running and communicating with Vault"
                 else:
-                    return "Running but not communicating with Vault"
-        elif "Active: inactive" in result_systemctl:
-            return "Inactive"
+                    service_statuses["psmpsrv"] = "Running but not communicating with Vault"
+        elif "Active: inactive" in result_psmpsrv:
+            service_statuses["psmpsrv"] = "Inactive"
         else:
-            return "Inactive"
+            service_statuses["psmpsrv"] = "Inactive"
     except subprocess.CalledProcessError:
-        return "Inactive"
+        service_statuses["psmpsrv"] = "Inactive"
+
+    # Check SSHD service status
+    try:
+        result_sshd = subprocess.check_output("systemctl status sshd", shell=True, universal_newlines=True)
+        if "Active: active" in result_sshd:
+            service_statuses["sshd"] = "Running"
+        elif "Active: inactive" in result_sshd:
+            service_statuses["sshd"] = "Inactive"
+        else:
+            service_statuses["sshd"] = "Inactive"
+    except subprocess.CalledProcessError:
+        service_statuses["sshd"] = "Inactive"
+    
+    return service_statuses
 
 def get_openssh_version():
     try:
@@ -146,7 +160,10 @@ if is_supported(psmp_versions, psmp_version, distro_name, distro_version):
 else:
     print(f"PSMP version {psmp_version} Does Not Support {distro_name} {distro_version}")
 
-print(f"Service status: {check_service_status()}")
+# Check service status
+service_status = check_services_status()
+print(f"PSMP Service Status: {service_status.get('psmpsrv', 'Unavailable')}")
+print(f"SSHD Service Status: {service_status.get('sshd', 'Unavailable')}")
 
 success, message, ssh_version = check_openssh_version()
 if not success:
