@@ -111,14 +111,41 @@ def check_openssh_version():
     except subprocess.CalledProcessError as e:
         return False, f"Error: {e}", None
 
+def check_pam_d(distro_name):
+    if distro_name == "CentOS Linux" or distro_name.startswith("Red Hat"):
+        pam_d_path = "/etc/pam.d/password-auth"
+    elif distro_name.startswith("SUSE Linux"):
+        pam_d_path = "/etc/pam.d/common-auth-pc"
+    else:
+        return
+    
+    found_nullok = False
+
+    try:
+        with open(pam_d_path, 'r') as file:
+            lines = file.readlines()
+
+        for line in lines:
+            if line.startswith("auth sufficient pam_unix.so"):
+                if "nullok" in line:
+                    found_nullok = True
+                    break
+
+    except FileNotFoundError:
+        print("pam.d file not found.")
+        return
+    
+    if not found_nullok:
+        print("pam.d file missing 'nullok' in the line 'auth sufficient pam_unix.so nullok try_first_pass'")
+        
 
 
 def check_sshd_config():
     sshd_config_path = "/etc/ssh/sshd_config"
-    found_pmsp_auth_block = False
-    found_allow_user = False
-    found_pubkey_accepted_algorithms = False
-    permit_empty_pass = False
+    found_pmsp_auth_block = False # PSMP Authentication Configuration Block Start
+    found_allow_user = False # AllowUser
+    found_pubkey_accepted_algorithms = False # PubkeyAcceptedAlgorithms
+    permit_empty_pass = False # PermitEmptyPasswords yes
     
     try:
         with open(sshd_config_path, "r") as file:
@@ -144,7 +171,7 @@ def check_sshd_config():
         print("PermitEmptyPasswords missing.")
     if found_allow_user:
         print("AllowUser mentioned found.")
-    else:
+    if not found_pubkey_accepted_algorithms:
         print("[+] SSH-Key auth not enabled, sshd_config missing 'PubkeyAcceptedAlgorithms'.")
 
 def logs_collect():
@@ -283,7 +310,6 @@ def generate_psmp_connection_string():
     return connection_string
 
 
-
 if __name__ == "__main__":
     # Check if the command-line argument is 'logs' or 'restore-sshd', then execute the function
     for arg in sys.argv:
@@ -309,9 +335,12 @@ if __name__ == "__main__":
 
     # Get the Linux distribution and version
     distro_name, distro_version = get_linux_distribution()
-
     print(f"PSMP version: {psmp_version}")
     print(f"Linux distribution: {distro_name} {distro_version}")
+
+    # Check PAM configuration
+    if float(psmp_version) <= 13.0:
+        check_pam_d(distro_name)
 
     # Check compatibility
     if is_supported(psmp_versions, psmp_version, distro_name, distro_version):
