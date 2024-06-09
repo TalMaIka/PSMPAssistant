@@ -1,3 +1,11 @@
+# Copyright: Tal.M @ CyberArk Software
+# Version: 0.1
+# Description: This script checks the compatibility of the installed PSMP version with the Linux distribution and version.
+# checks the status of PSMP and SSHD services, OpenSSH version, and SSHD configuration.
+# collect logs from specific folders and restore the sshd_config file from a backup.
+# generate a PSMP connection string based on user inputs.
+
+
 import json
 import subprocess
 import distro
@@ -172,7 +180,9 @@ def check_sshd_config():
     if found_allow_user:
         print("AllowUser mentioned found.")
     if not found_pubkey_accepted_algorithms:
-        print("[+] SSH-Key auth not enabled, sshd_config missing 'PubkeyAcceptedAlgorithms'.")
+        print("[+] SSH-Keys auth not enabled, sshd_config missing 'PubkeyAcceptedAlgorithms'.")
+    else:
+        print("No misconfiguration found related to sshd_config.")
 
 def logs_collect():
     # Define folders to copy logs from
@@ -338,14 +348,8 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # Get the Linux distribution and version
+    print("PSMP Compatibility Check:")
     distro_name, distro_version = get_linux_distribution()
-    print(f"PSMP version: {psmp_version}")
-    print(f"Linux distribution: {distro_name} {distro_version}")
-
-    # Check PAM configuration
-    if float(psmp_version) <= 13.0:
-        check_pam_d(distro_name)
-
     # Check compatibility
     if is_supported(psmp_versions, psmp_version, distro_name, distro_version):
         print(f"PSMP version {psmp_version} Supports {distro_name} {distro_version}")
@@ -355,11 +359,19 @@ if __name__ == "__main__":
 
     # Check service status
     service_status = check_services_status()
+    print("\nServices Availability Check:")
     print(f"PSMP Service Status: {service_status.get('psmpsrv', 'Unavailable')}")
     print(f"SSHD Service Status: {service_status.get('sshd', 'Unavailable')}")
-
+    # Check OpenSSH version
     success, message, ssh_version = check_openssh_version()
     if not success:
         print(message)
 
+    # Check SSHD configuration
+    print("\nSSHD Configuration Check:")
     check_sshd_config()
+
+    # Check PAM configuration
+    if float(psmp_version) <= 13.0:
+        print("\nPAM Configuration Check:")
+        check_pam_d(distro_name)
