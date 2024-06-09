@@ -286,6 +286,10 @@ def check_sshd_debug_level():
         sys.exit(1)
 
 def generate_psmp_connection_string():
+    print("PSMP Connection String Generator")
+    print("Example: [vaultuser]@[targetuser]#[domainaddress]@[targetaddress]#[targetport]@[PSM for SSH address]")
+    print("More information: https://cyberark.my.site.com/s/article/PSM-for-SSH-Syntax-Cheat-Sheet")
+    print("Please provide the following details to generate the connection string:\n")
     # Collect inputs from the user
     vault_user = input("Enter vault user: ")
     target_user = input("Enter target user: ")
@@ -307,7 +311,7 @@ def generate_psmp_connection_string():
     
     connection_string += f"@{psm_for_ssh_address}"
 
-    return connection_string
+    return "=> "+connection_string
 
 
 if __name__ == "__main__":
