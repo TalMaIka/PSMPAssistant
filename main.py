@@ -114,10 +114,11 @@ def check_openssh_version():
 
 
 def check_sshd_config():
-    sshd_config_path = "/etc/ssh/sshd_config"  # Modify this path as needed
+    sshd_config_path = "/etc/ssh/sshd_config"
     found_pmsp_auth_block = False
     found_allow_user = False
     found_pubkey_accepted_algorithms = False
+    permit_empty_pass = False
     
     try:
         with open(sshd_config_path, "r") as file:
@@ -131,12 +132,16 @@ def check_sshd_config():
                 # Check if the line contains PubkeyAcceptedAlgorithms and is uncommented
                 if "PubkeyAcceptedAlgorithms" in line and not line.strip().startswith("#"):
                     found_pubkey_accepted_algorithms = True
+                if "PermitEmptyPasswords yes" in line and not line.strip().startswith("#"):
+                    permit_empty_pass = True
     except FileNotFoundError:
         print("sshd_config file not found.")
         return
     
     if not found_pmsp_auth_block:
         print("PSMP authentication block not found.")
+    if not permit_empty_pass:
+        print("PermitEmptyPasswords missing.")
     if found_allow_user:
         print("AllowUser mentioned found.")
     else:
@@ -253,6 +258,30 @@ def check_sshd_debug_level():
         print("* Make sure to Save and Restart sshd and psmpsrv Services.")
         sys.exit(1)
 
+def generate_psmp_connection_string():
+    # Collect inputs from the user
+    vault_user = input("Enter vault user: ")
+    target_user = input("Enter target user: ")
+    target_user_domain = input("Enter target user domain address (leave empty if local): ")
+    target_address = input("Enter target address: ")
+    target_port = input("Enter target port (leave empty if default port 22): ")
+    psm_for_ssh_address = input("Enter PSM for SSH address: ")
+
+    # Construct the connection string
+    connection_string = f"{vault_user}@{target_user}"
+    
+    if target_user_domain:
+        connection_string += f"#{target_user_domain}"
+    
+    connection_string += f"@{target_address}"
+    
+    if target_port and target_port != '22':
+        connection_string += f"#{target_port}"
+    
+    connection_string += f"@{psm_for_ssh_address}"
+
+    return connection_string
+
 
 
 if __name__ == "__main__":
@@ -264,6 +293,9 @@ if __name__ == "__main__":
             sys.exit(1)
         elif arg == "restore-sshd":
             restore_sshd_config_from_backup()
+            sys.exit(1)
+        elif arg == "string":
+            print(generate_psmp_connection_string())
             sys.exit(1)
 
     # Load PSMP versions from a JSON file
