@@ -1,10 +1,9 @@
 # Copyright: Tal.M @ CyberArk Software
 # Version: 0.1
 # Description: This script checks the compatibility of the installed PSMP version with the Linux distribution and version.
-# checks the status of PSMP and SSHD services, OpenSSH version, and SSHD configuration.
-# collect logs from specific folders and restore the sshd_config file from a backup.
-# generate a PSMP connection string based on user inputs.
-
+# Check the status of PSMP and SSHD services, OpenSSH version, and SSHD configuration.
+# Collect logs from specific folders and restore the sshd_config file from a backup.
+# Generate a PSMP connection string based on user inputs.
 
 import json
 import subprocess
