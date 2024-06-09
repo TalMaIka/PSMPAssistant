@@ -52,7 +52,7 @@ To generate a PSMP connection string, use the `string` argument:
 ```bash
 python3 main.py string
 ```
-![Example-String](https://i.imgur.com/Xmlrdtw.png)
+![Example-String](https://i.imgur.com/5lPEP5c.png)
 
 ## Features
 
