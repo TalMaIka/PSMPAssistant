@@ -11,7 +11,7 @@ To install the dependencies required for this tool, you can use pip and the prov
 ```bash
 git clone https://github.com/TalMaIka/PSMPChecker.git
 cd PSMPChecker
-pip install -r requirements.txt / [RHEL] pip3 install -r requirements.txt
+[RHEL/CentOS] pip3 install -r requirements.txt
 ```
 
 ## Usage
