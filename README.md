@@ -18,7 +18,7 @@ cd PSMPChecker
 
 To use the tool, run the `main.py` script with optional arguments.
 
-### Checking PSMP Compatibility
+### Checking PSMP Compatibility and Configuration
 
 Run the script without any arguments to check the PSMP compatibility with the current system:
 
@@ -42,13 +42,25 @@ To restore the SSHD configuration from a backup, use the `restore-sshd` argument
 python3 main.py restore-sshd
 ```
 
+### Generating PSMP Connection String
+
+To generate a PSMP connection string, use the `string` argument:
+
+```bash
+python3 main.py string
+```
+
 ## Features
 
-- **Compatibility Check:** Validates compatibility between installed PSMP versions and Linux distributions.
-- **Service Status:** Verifies the status of PSMP and SSHD services.
-- **OpenSSH Configuration:** Ensures proper configuration of OpenSSH.
+- **Compatibility Validation:** Ensures that the installed PSMP version is compatible with the detected Linux distribution.
+- **Service Monitoring:** Checks and verifies the status of PSMP and SSHD services.
+- **OpenSSH Version Check:** Verifies if the installed OpenSSH version meets the required version.
+- **PAM Configuration Check:** Validates the PAM configuration for certain Linux distributions.
+- **SSHD Configuration Check:** Ensures proper configuration of the SSHD service.
 - **Logs Collection:** Collects logs from specified locations and creates a zip file for analysis.
 - **SSHD Configuration Restoration:** Restores the SSHD configuration from a backup file.
+- **SSHD Debug Level Check:** Checks if the SSHD debug level is set to DEBUG3.
+- **PSMP Connection String Generation:** Generates a PSMP connection string based on user input.
 
 ## Contributing
 
