@@ -15,6 +15,8 @@ import shutil
 import datetime
 import zipfile
 import sys
+import psutil
+import socket
 
 def load_psmp_versions_json(file_path):
     with open(file_path, 'r') as file:
@@ -322,6 +324,83 @@ def generate_psmp_connection_string():
 
     return "=> "+connection_string
 
+def check_disk_space(threshold_percent=20):
+    disk_usage = psutil.disk_usage('/')
+    if disk_usage.percent > (100 - threshold_percent):
+        return False, f"Low disk space: {disk_usage.percent}% used."
+    return True, "Disk space is sufficient."
+
+def check_system_resources(threshold_cpu=80, threshold_memory=80):
+    cpu_usage = psutil.cpu_percent()
+    memory_usage = psutil.virtual_memory().percent
+    if cpu_usage > threshold_cpu:
+        return False, f"High CPU usage: {cpu_usage}%"
+    if memory_usage > threshold_memory:
+        return False, f"High Memory usage: {memory_usage}%"
+    return True, "System resources are within normal limits."
+
+def search_failed_connections(distro_name):
+    if distro_name == "CentOS Linux" or distro_name.startswith("Red Hat"):
+        log_file = "/var/log/secure"
+    elif distro_name.startswith("SUSE Linux"):
+        log_file = "/var/log/messages"
+    else:
+        return []
+    # Define patterns for failed connection attempts
+    failed_patterns = [
+        r'Failed password for',
+        r'authentication failure',
+        r'Failed \S+ from \S+ port \d+ ssh2',
+        r'Invalid user \S+ from \S+',
+        r'Connection closed by \S+ port \d+ \[preauth\]',
+        r'error: PAM: Authentication failure for \S+ from \S+',
+    ]
+    
+    # Compile the patterns into regular expressions
+    failed_regexes = [re.compile(pattern) for pattern in failed_patterns]
+    
+    # Read the log file and search for failed connection attempts
+    failed_attempts = []
+    with open(log_file, 'r') as file:
+        for line in file:
+            for regex in failed_regexes:
+                if regex.search(line):
+                    failed_attempts.append(line.strip())
+                    break  # Avoid matching multiple patterns in the same line
+    
+    return failed_attempts
+
+def search_log_for_patterns():
+    log_file = '/var/opt/CARKpsmp/logs/PSMPTrace.log'
+    found = False
+
+    patterns = [
+    "ITACM022S Unable to connect to the vault",
+    "PSMPPS037E PSM SSH Proxy has been terminated.",
+    "PSMSC023E LoadLocalUserProfile : Failed to load user profile for local user",
+    "ITATS108E Authentication failure for User"
+    ]
+
+    # Open the log file in read mode ('r')
+    with open(log_file, 'r', encoding='utf-8') as file:
+        for line in reversed(list(file)):  # Read the file line by line from bottom to top
+            for pattern in patterns:
+                if pattern in line:
+                    print(line.strip())
+                    found = True
+                    break
+            if found:
+                break
+
+    if not found:
+        print(f"No lines containing any of the patterns found in the log file.")
+
+def hostname_check():
+    hostname = socket.gethostname()
+    # Check if the hostname includes 'localhost'
+    if 'localhost' in hostname.lower():
+        print(f"[+] Hostname: '{hostname}' as default value, Change it to enique name to eliminate future issues.")
+    return hostname
 
 if __name__ == "__main__":
     # Check if the command-line argument is 'logs' or 'restore-sshd', then execute the function
@@ -355,6 +434,8 @@ if __name__ == "__main__":
     else:
         print(f"PSMP version {psmp_version} Does Not Support {distro_name} {distro_version}")
         print(f"Please refer to the PSMP documentation for supported versions.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/Content/PAS%20SysReq/System%20Requirements%20-%20PSMP.htm")
+    hostname_check() # Check if the hostname changed from default value
+
 
     # Check service status
     service_status = check_services_status()
@@ -374,3 +455,19 @@ if __name__ == "__main__":
     if float(psmp_version) <= 13.0:
         print("\nPAM Configuration Check:")
         check_pam_d(distro_name)
+
+    #System Resources Check
+    print("\nSystem Resources Check:")
+    print(check_system_resources()[1])
+    print(check_disk_space()[1])
+
+    # Search for failed connection attempts in the secure log
+    print("\nSearch for patterns in secure logs:")
+    failed_attempts = search_failed_connections(distro_name)
+
+    for attempt in failed_attempts:
+        print(attempt)
+    
+    # Search for patterns in the PSMPTrace.log file
+    print("\nSearch for patterns in PSMPTrace.log:")
+    search_log_for_patterns()
