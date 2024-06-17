@@ -1,9 +1,12 @@
 # Copyright: Tal.M @ CyberArk Software
-# Version: 0.1
-# Description: This script checks the compatibility of the installed PSMP version with the Linux distribution and version.
-# Check the status of PSMP and SSHD services, OpenSSH version, and SSHD configuration.
-# Collect logs from specific folders and restore the sshd_config file from a backup.
-# Generate a PSMP connection string based on user inputs.
+# Version: 1.0
+# Description: This script performs a series of checks and operations related to CyberArk's Privileged Session Manager for SSH Proxy (PSMP) and SSHD configuration on Linux systems.
+# - Validates PSMP version compatibility with the installed Linux distribution.
+# - Checks the status of PSMP and SSHD services.
+# - Verifies the installed OpenSSH version for PSMP compatibility.
+# - Examines and restores SSHD configuration from a backup.
+# - Collects relevant logs from system folders for troubleshooting.
+# - Generates a PSMP connection string based on user inputs.
 
 import json
 import subprocess
@@ -17,6 +20,7 @@ import sys
 import psutil
 import socket
 from time import sleep
+
 
 # Load PSMP versions from a JSON file
 

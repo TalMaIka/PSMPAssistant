@@ -1,8 +1,8 @@
 import subprocess
 
 dependencies = {
-    'distro': 'prerequisites/distro-1.9.0-py3-none-any.whl',
-    'psutil': 'prerequisites/psutil-5.9.8.tar.gz'
+    'distro': 'src/prerequisites/distro-1.9.0-py3-none-any.whl',
+    'psutil': 'src/prerequisites/psutil-5.9.8.tar.gz'
 }
 
 def check_dependency(package):

@@ -11,7 +11,8 @@ To install the dependencies required for this tool, you can use pip and the prov
 ```bash
 git clone https://github.com/TalMaIka/PSMPChecker.git
 cd PSMPChecker
-[RHEL/CentOS] pip3 install -r requirements.txt
+Requirments are python3-devel and python3-pip
+[RHEL/CentOS] pip3 install -r requirements.txt / python3 prerequisite.py
 ```
 
 ## Usage
@@ -54,6 +55,8 @@ python3 main.py string
 ```
 ![Example-String](https://i.imgur.com/5lPEP5c.png)
 
+Certainly! Here's the updated list of features and the modified script with the new features included:
+
 ## Features
 
 - **Compatibility Validation:** Ensures that the installed PSMP version is compatible with the detected Linux distribution.
@@ -65,11 +68,13 @@ python3 main.py string
 - **SSHD Configuration Restoration:** Restores the SSHD configuration from a backup file.
 - **SSHD Debug Level Check:** Checks if the SSHD debug level is set to DEBUG3.
 - **PSMP Connection String Generation:** Generates a PSMP connection string based on user input.
+- **Disk Space Check:** Verifies if there is sufficient disk space on the system.
+- **System Resource Check:** Monitors CPU and memory usage to ensure they are within acceptable limits.
+- **Failed Connection Attempt Detection:** Searches system logs for failed connection attempts.
+- **PSMP Trace Log Pattern Search:** Searches the PSMPTrace.log file for specific error patterns.
+- **Hostname Validation:** Checks if the system hostname is set to a unique value to avoid future issues.
 
 ## Contributing
 
 Contributions are welcome! Fork the repository and submit a pull request with your changes.
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
