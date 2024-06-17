@@ -9,7 +9,6 @@ import json
 import subprocess
 import distro
 import re
-import argparse
 import os
 import shutil
 import datetime
@@ -17,10 +16,15 @@ import zipfile
 import sys
 import psutil
 import socket
+from time import sleep
+
+# Load PSMP versions from a JSON file
 
 def load_psmp_versions_json(file_path):
     with open(file_path, 'r') as file:
         return json.load(file)
+
+# Get the installed PSMP version
 
 def get_installed_psmp_version():
     try:
@@ -35,6 +39,8 @@ def get_installed_psmp_version():
     except subprocess.CalledProcessError:
         return None
 
+# Get the Linux distribution and version
+
 def get_linux_distribution():
     version_info = distro.version(best=True)
     version_parts = version_info.split('.')
@@ -43,6 +49,7 @@ def get_linux_distribution():
     main_version = f"{major}.{minor}"
     return distro.name(), main_version
 
+# Check if the PSMP version is supported for the given Linux distribution and version
 
 def is_supported(psmp_versions, psmp_version, distro_name, distro_version):
     if psmp_version not in psmp_versions:
@@ -57,10 +64,10 @@ def is_supported(psmp_versions, psmp_version, distro_name, distro_version):
                             return True
     return False
 
+# Check the status of PSMP and SSHD services
 
 def check_services_status():
     service_statuses = {}
-    
     # Check PSMP service status
     try:
         result_psmpsrv = subprocess.check_output("systemctl status psmpsrv", shell=True, universal_newlines=True)
@@ -92,6 +99,8 @@ def check_services_status():
     
     return service_statuses
 
+# OpenSSH version check regarding the PSMP compatibility
+
 def get_openssh_version():
     try:
         # Get the version of OpenSSH installed
@@ -105,6 +114,7 @@ def get_openssh_version():
     except subprocess.CalledProcessError as e:
         return None
 
+# Check OpenSSH version for PSMP compatibility
 
 def check_openssh_version():
     try:
@@ -119,6 +129,8 @@ def check_openssh_version():
             return False, "Failed to determine OpenSSH version.", None
     except subprocess.CalledProcessError as e:
         return False, f"Error: {e}", None
+
+# PAM.d file check for 'nullok' in the line 'auth sufficient pam_unix.so nullok try_first_pass'
 
 def check_pam_d(distro_name):
     if distro_name == "CentOS Linux" or distro_name.startswith("Red Hat"):
@@ -146,13 +158,43 @@ def check_pam_d(distro_name):
     
     if not found_nullok:
         print("pam.d file missing 'nullok' in the line 'auth sufficient pam_unix.so nullok try_first_pass'")
-        
 
+# Restore the sshd_config file from a backup
+
+def restore_sshd_config_from_backup():
+    # Path to the backup sshd_config file
+    backup_file_path = "/opt/CARKpsmp/backup/sshd_config_backup"
+
+    try:
+        # Print the content of the backup file before changing
+        print("Content of backup sshd_config file before restoring:")
+        sleep(1)
+        with open(backup_file_path, "r") as backup_file:
+            print(backup_file.read())
+
+        # Ask for confirmation from the user
+        confirmation = input("Do you want to restore sshd_config from backup? (y/n): ")
+        if confirmation.lower() != "y":
+            print("Restoration aborted.")
+            return
+
+        # Run the cp command with the -i option to prompt before overwriting
+        subprocess.run(["cp", "-i", backup_file_path, "/etc/ssh/sshd_config"])
+        
+        print("Successfully restored sshd_config from backup.")
+
+    except FileNotFoundError:
+        print("Backup file not found.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+        
+# Check the sshd_config file for misconfigurations related to PSMP
 
 def check_sshd_config():
     sshd_config_path = "/etc/ssh/sshd_config"
     found_pmsp_auth_block = False # PSMP Authentication Configuration Block Start
-    found_allow_user = False # AllowUser
+    found_allow_user = False # AllowUser should not be present
     found_pubkey_accepted_algorithms = False # PubkeyAcceptedAlgorithms
     permit_empty_pass = False # PermitEmptyPasswords yes
     
@@ -185,7 +227,22 @@ def check_sshd_config():
     else:
         print("No misconfiguration found related to sshd_config.")
 
+# Collect PSMP machine logs and creating a zip file
+
 def logs_collect():
+    print("PSMP Logs Collection")
+    # Check sshd_config file elevated debug level
+    if(check_sshd_debug_level()):
+        print("sshd_config file has been elevated to debug mode, Please reproduce the issue.")
+        # Note for the user
+        print("\nVerify debug level in the PVWA GUI:")
+        print("1. Go to Administration → Options → Privileged Session Management → General Settings.")
+        print("2. Under Server Settings set TraceLevels=1,2,3,4,5,6,7")
+        print("3. Under Connection Client Settings set TraceLevels=1,2")
+        print("* Make sure to Save and Restart sshd and psmpsrv Services.")
+        sys.exit(1)
+    sleep(1)   
+
     # Define folders to copy logs from
     log_folders = [
         "/var/log/secure",
@@ -215,7 +272,6 @@ def logs_collect():
     os.makedirs(temp_folder, exist_ok=True)
 
     try:
-        # Copy logs from each folder to the temporary folder
         for folder in log_folders:
             if os.path.exists(folder):
                 if os.path.isdir(folder):
@@ -225,7 +281,6 @@ def logs_collect():
             else:
                 print(f"Folder not found: {folder}")
 
-        # Get the current date in the format DD.MM.YY
         current_date = datetime.datetime.now().strftime("%m.%d.%y")
 
         # Create a zip file with the specified name format
@@ -245,56 +300,85 @@ def logs_collect():
         # Clean up temporary folder
         shutil.rmtree(temp_folder, ignore_errors=True)
 
-def restore_sshd_config_from_backup():
-    # Path to the backup sshd_config file
-    backup_file_path = "/opt/CARKpsmp/backup/sshd_config_backup"
 
-    try:
-        # Print the content of the backup file before changing
-        print("Content of backup sshd_config file before restoring:")
-        with open(backup_file_path, "r") as backup_file:
-            print(backup_file.read())
-
-        # Ask for confirmation from the user
-        confirmation = input("Do you want to restore sshd_config from backup? (y/n): ")
-        if confirmation.lower() != "y":
-            print("Restoration aborted.")
-            return
-
-        # Run the cp command with the -i option to prompt before overwriting
-        subprocess.run(["cp", "-i", backup_file_path, "/etc/ssh/sshd_config"])
-        
-        print("Successfully restored sshd_config from backup.")
-
-    except FileNotFoundError:
-        print("Backup file not found.")
-    except Exception as e:
-        print(f"Error: {e}")
+# Restore the sshd_config file from a backup
 
 def check_sshd_debug_level():
-    sshd_config_path = "/etc/ssh/sshd_config"
-    debug3_found = False
+    config_path = "/etc/ssh/sshd_config"
+    changes_made = False
+    # Desired lines
+    desired_lines = {
+        "SyslogFacility": "AUTHPRIV",
+        "LogLevel": "DEBUG3"
+    }
     
-    try:
-        with open(sshd_config_path, "r") as file:
-            lines = file.readlines()
+    # Boolean variables to track if lines are found exactly
+    syslog_found = False
+    loglevel_found = False
+    
+    # Read current lines from the file
+    with open(config_path, 'r') as file:
+        lines = file.readlines()
+    
+    # Check if each desired line is present and has the correct value
+    for key, value in desired_lines.items():
+        line_found = False
+        for i, line in enumerate(lines):
+            if line.strip().startswith(f"{key} {value}"):
+                line_found = True
+                break
+        if line_found:
+            if key == "SyslogFacility":
+                syslog_found = True
+            elif key == "LogLevel":
+                loglevel_found = True
+    
+    # If any line is not found exactly, prompt user for permission to update
+    if not syslog_found or not loglevel_found:
+        changes_made = True
+        print("The following lines need updating or are missing:")
+        for key, value in desired_lines.items():
+            if key == "SyslogFacility" and not syslog_found:
+                print(f"{key} {value}")
+            elif key == "LogLevel" and not loglevel_found:
+                print(f"{key} {value}")
+        
+        permission = input("Do you want to update these lines and restart the service? (y/n): ").strip().lower()
+        if permission in ['y', 'yes']:
+            # Remove existing lines that start with the key and add correct ones
+            updated_lines = []
+            for key, value in desired_lines.items():
+                updated_lines.append(f"{key} {value}\n")
+            
+            # Add existing lines that are not to be updated
             for line in lines:
-                # Check for uncommented line specifying LogLevel DEBUG3
-                if line.strip() == "LogLevel DEBUG3":
-                    debug3_found = True
+                skip_line = False
+                for key, value in desired_lines.items():
+                    if line.strip().startswith(f"{key} "):
+                        skip_line = True
+                        break
+                if not skip_line:
+                    updated_lines.append(line)
+            
+            lines = updated_lines
     
-    except FileNotFoundError:
-        print("sshd_config file not found.")
-        sys.exit(1)
+    # Write back the modified lines to the file
+    with open(config_path, 'w') as file:
+        file.writelines(lines)
     
-    if not debug3_found:
-        print("Debug level needs to be elevated.\nPlease ensure 'LogLevel DEBUG3' is either changed or added to the sshd_config.")
-        print("As long as in the PVWA GUI:")
-        print("1. Go to Administration → Options → Privileged Session Management → General Settings.")
-        print("2. Under Server Settings set TraceLevels=1,2,3,4,5,6,7")
-        print("3. Under Connection Client Settings set TraceLevels=1,2")
-        print("* Make sure to Save and Restart sshd and psmpsrv Services.")
-        sys.exit(1)
+    # Check if both desired lines are present with correct values
+    syslog_present = any(line.strip() == "SyslogFacility AUTHPRIV" for line in lines)
+    loglevel_present = any(line.strip() == "LogLevel DEBUG3" for line in lines)
+    if syslog_present and loglevel_present and changes_made: # Restart the sshd service if both lines are present
+        try:
+            subprocess.run(["systemctl", "restart", "sshd"], check=True)
+            print("sshd service restarted successfully.")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to restart sshd service: {e}")
+       
+    return changes_made
+
+# Generate PSMP connection string based on user inputs
 
 def generate_psmp_connection_string():
     print("PSMP Connection String Generator")
@@ -302,6 +386,7 @@ def generate_psmp_connection_string():
     print("More information: https://cyberark.my.site.com/s/article/PSM-for-SSH-Syntax-Cheat-Sheet")
     print("Please provide the following details to generate the connection string:\n")
     # Collect inputs from the user
+    print("MFA Caching requires FQDN of the Vault user.")
     vault_user = input("Enter vault user: ")
     target_user = input("Enter target user: ")
     target_user_domain = input("Enter target user domain address (leave empty if local): ")
@@ -339,7 +424,9 @@ def check_system_resources(threshold_cpu=80, threshold_memory=80):
         return False, f"High Memory usage: {memory_usage}%"
     return True, "System resources are within normal limits."
 
-def search_failed_connections(distro_name):
+# Search the secure log file for known patterns
+
+def search_secure_log(distro_name):
     if distro_name == "CentOS Linux" or distro_name.startswith("Red Hat"):
         log_file = "/var/log/secure"
     elif distro_name.startswith("SUSE Linux"):
@@ -370,6 +457,8 @@ def search_failed_connections(distro_name):
     
     return failed_attempts
 
+# Search the PSMPTrace.log file for known patterns
+
 def search_log_for_patterns():
     log_file = '/var/opt/CARKpsmp/logs/PSMPTrace.log'
     found = False
@@ -393,7 +482,9 @@ def search_log_for_patterns():
                 break
 
     if not found:
-        print(f"No lines containing any of the patterns found in the log file.")
+        print(f"No lines containing any of the patterns found.")
+
+# Verify unique hostname
 
 def hostname_check():
     hostname = socket.gethostname()
@@ -406,7 +497,6 @@ if __name__ == "__main__":
     # Check if the command-line argument is 'logs' or 'restore-sshd', then execute the function
     for arg in sys.argv:
         if arg == "logs":
-            check_sshd_debug_level()
             logs_collect()
             sys.exit(1)
         elif arg == "restore-sshd":
@@ -463,10 +553,12 @@ if __name__ == "__main__":
 
     # Search for failed connection attempts in the secure log
     print("\nSearch for patterns in secure logs:")
-    failed_attempts = search_failed_connections(distro_name)
-
-    for attempt in failed_attempts:
-        print(attempt)
+    failed_attempts = search_secure_log(distro_name)
+    if not failed_attempts:
+        print("No lines containing any of the patterns found.")
+    else:
+        for attempt in failed_attempts:
+            print(attempt)
     
     # Search for patterns in the PSMPTrace.log file
     print("\nSearch for patterns in PSMPTrace.log:")
