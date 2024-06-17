@@ -252,7 +252,6 @@ def logs_collect():
         "/var/log/secure",
         "/var/log/messages",
         "/var/opt/CARKpsmp/logs",
-        "/var/opt/CARKpsmp/logs/components",
         "/etc/ssh/sshd_config",
         "/etc/pam.d/sshd",
         "/etc/pam.d/password-auth",
