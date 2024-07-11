@@ -55,7 +55,6 @@ python3 main.py string
 ```
 ![Example-String](https://i.imgur.com/5lPEP5c.png)
 
-Certainly! Here's the updated list of features and the modified script with the new features included:
 
 ## Features
 
