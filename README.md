@@ -2,7 +2,7 @@
 
 ## Description
 
-This Python tool validates compatibility between installed CyberArk Privileged Session Manager (PSMP) versions and various Linux distributions. It checks if the PSMP version is supported on the detected Linux distribution, verifies the status of the PSMP service, and ensures proper OpenSSH configuration. With just a few commands, it provides valuable insights into PSMP compatibility and system configuration.
+A Python-based tool designed to verify the installation and compatibility of Privileged Session Manager Proxy (PSMP) on Linux systems. This tool evaluates PSMP and SSHD service statuses, supported Linux distributions, configuration compliance, and generates necessary system logs for diagnostic purposes.
 
 ## Installation
 
