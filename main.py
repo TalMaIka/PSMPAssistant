@@ -1,5 +1,5 @@
 # Copyright: Tal.M @ CyberArk Software
-# Version: 1.1
+# Version: 1.0
 # Description: This script performs a series of checks and operations related to CyberArk's Privileged Session Manager for SSH Proxy (PSMP) and SSHD configuration on Linux systems.
 
 import json
@@ -309,7 +309,7 @@ def logs_collect():
             else:
                 logging.info(f"Folder not found: {folder}")
 
-        current_date = datetime.datetime.now().strftime("%m.%d.%y")
+        current_date = datetime.now().strftime("%m.%d.%y")
 
         # Create a zip file with the specified name format
         zip_filename = f"PSMP_Logs_{current_date}.zip"
