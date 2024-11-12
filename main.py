@@ -616,7 +616,7 @@ if __name__ == "__main__":
             # Fetch the vault address from the /opt/CARKpsmp/vault.ini file
             vault_address = ""
             try:
-                with open("/opt/CARKpsmp/vault.ini", "r") as file:
+                with open("/etc/opt/CARKpsmp/vault/vault.ini", "r") as file:
                     for line in file:
                         if line.startswith("ADDRESS="):
                             vault_address = line.split("=")[1].strip()
