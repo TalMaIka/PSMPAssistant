@@ -58,22 +58,40 @@ python3 main.py string
 
 ## Features
 
-- **Compatibility Validation:** Ensures that the installed PSMP version is compatible with the detected Linux distribution.
-- **Service Monitoring:** Checks and verifies the status of PSMP and SSHD services.
-- **OpenSSH Version Check:** Verifies if the installed OpenSSH version meets the required version.
-- **PAM Configuration Check:** Validates the PAM configuration for certain Linux distributions.
-- **SSHD Configuration Check:** Ensures proper configuration of the SSHD service.
-- **Logs Collection:** Collects logs from specified locations and creates a zip file for analysis.
-- **SSHD Configuration Restoration:** Restores the SSHD configuration from a backup file.
-- **SSHD Debug Level Check:** Checks if the SSHD debug level is set to DEBUG3.
-- **PSMP Connection String Generation:** Generates a PSMP connection string based on user input.
-- **Disk Space Check:** Verifies if there is sufficient disk space on the system.
-- **System Resource Check:** Monitors CPU and memory usage to ensure they are within acceptable limits.
-- **Failed Connection Attempt Detection:** Searches system logs for failed connection attempts.
-- **PSMP Trace Log Pattern Search:** Searches the PSMPTrace.log file for specific error patterns.
-- **Hostname Validation:** Checks if the system hostname is set to a unique value to avoid future issues.
+### Compatibility Validation
+- Ensures that the installed PSMP version is compatible with the detected Linux distribution and version based on official CyberArk documentation.
 
-## Contributing
+### Service Monitoring
+- Checks and verifies the status of PSMP and SSHD services.
+ + Checks communication between PSMP and Vault server, including options to update the Vault IP address if needed.
 
-Contributions are welcome! Fork the repository and submit a pull request with your changes.
+### OpenSSH Version Check
+- Verifies if the installed OpenSSH version meets the required version.
+
+### Hostname Validation
+- Checks if the system hostname is set to a unique value to avoid future issues.
+
+### System Resource Check
+- Monitors CPU and memory usage to ensure they are within acceptable limits and Verifies if there is sufficient disk space.
+
+### PAM Configuration Check
+- Validates the PAM configuration for certain Linux distributions.
+
+### SSHD Configuration Check
+- Ensures proper configuration of the SSHD service to allow proper PSMP flow.
+
+### Logs Collection
+- Collects logs from specified locations and creates a zip file for analysis.
+ + Checks if the SSHD debug level is set to DEBUG3.
+
+### SSHD Configuration Restoration
+- Restores the SSHD configuration from a backup file located in opt/CARKpsmp/backup/sshd_config_backup.
+
+### PSMP Connection String Generation
+- Generates a PSMP connection string based on user input. 
+
+### Secure and PSMPTrace Logs Pattern Detection
+- Searches the `PSMPTrace.log` and `secure` files for specific error patterns and alerts to diagnose potential issues.
+
+
 
