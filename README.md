@@ -26,7 +26,7 @@ Run the script without any arguments to check the PSMP compatibility with the cu
 ```bash
 python3 main.py
 ```
-![Example-Use](https://i.imgur.com/OsVDvUy.png)
+<img src="https://i.postimg.cc/dVD2wXkh/1.png" alt="Tool landing page" style="width:92%;">
 
 ### Collecting Logs
 
