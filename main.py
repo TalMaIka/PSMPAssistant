@@ -856,7 +856,8 @@ def rpm_repair(psmp_version):
     """
     Automates the repair of the RPM for the specified PSMP version.
     """
-    logging.info("PSMP RPM Installation Repair:")
+    logging.info(f"PSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
+    logging.info("\nPSMP RPM Installation Repair:")
 
     # Step 1: Find the installation folder containing the RPM that matches the specified PSMP version
     find_cmd = "find / -type f -name 'CARK*.rpm'"
