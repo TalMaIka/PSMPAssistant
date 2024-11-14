@@ -325,7 +325,9 @@ def check_pam_d(distro_name):
         return
     
     if not found_nullok:
-        logging.info("pam.d file missing 'nullok' in the line 'auth sufficient pam_unix.so nullok try_first_pass'")
+        logging.info("\n[-] pam.d file missing 'nullok' in the line 'auth sufficient pam_unix.so nullok try_first_pass'")
+    else:
+        logging.info("\npam.d is correctly configured.")
 
 # Backup a file by making .bak copy
 
@@ -665,6 +667,7 @@ def search_log_for_patterns():
 
     patterns = [
     "Permission denied",
+    "PSMPPS276I Configuring SSH Proxy",
     "Could not chdir to home directory /home/PSMConnect: Permission denied",
     "Failed to add the host to the list of known hosts (/home/PSMShadowUser/.ssh/known_hosts).",
     "ITACM022S Unable to connect to the vault",
@@ -762,10 +765,235 @@ def disable_nscd_service():
     except subprocess.CalledProcessError as e:
         logging.info(f"Error: {e}")
 
+# Veify nsswitch configuration
+
+def verify_nsswitch_conf(psmp_version):
+    """
+    Verifies and, if necessary, updates the /etc/nsswitch.conf file to match
+    the expected configuration for the given PSMP version.
+    """
+    nsswitch_path = "/etc/nsswitch.conf"
+    
+    # Ensure psmp_version is treated as a float for comparison
+    try:
+        psmp_version = float(psmp_version)
+    except ValueError:
+        print("Invalid PSMP version. Please provide a numeric version.")
+        return False
+    
+    # Define expected configurations based on PSMP version
+    expected_config_v12_2_or_newer = {
+        "passwd": "files psmp sss",
+        "shadow": "files sss",
+        "group": "files psmp sss",
+        "initgroups": "files psmp"
+    }
+
+    expected_config_older_than_v12_2 = {
+        "passwd": "files psmp sss",
+        "shadow": "files sss",
+        "group": "files psmp sss",
+        "initgroups": "files sss"  # Note that this is commented out in expected file
+    }
+    
+    # Choose expected config based on version
+    if psmp_version >= 12.2:
+        expected_config = expected_config_v12_2_or_newer
+    else:
+        expected_config = expected_config_older_than_v12_2
+
+    # Read the file content
+    try:
+        with open(nsswitch_path, "r") as f:
+            content = f.readlines()
+    except FileNotFoundError:
+        print(f"{nsswitch_path} not found.")
+        return False
+
+    # Parse the file content
+    actual_config = {}
+    for line in content:
+        line = line.strip()
+        if line and not line.startswith("#"):  # Ignore empty lines and comments
+            key, *value = line.split(":")
+            actual_config[key.strip()] = value[0].strip() if value else ""
+
+    # Compare actual config with expected config
+    discrepancies = []
+    for key, expected_value in expected_config.items():
+        actual_value = actual_config.get(key)
+        if actual_value != expected_value:
+            discrepancies.append((key, actual_value, expected_value))
+
+    # If discrepancies are found, prompt for confirmation
+    if discrepancies:
+        print("Discrepancies found in /etc/nsswitch.conf:")
+        for key, actual, expected in discrepancies:
+            print(f" - {key}: found '{actual}', expected '{expected}'")
+        
+        confirmation = input("Would you like to update /etc/nsswitch.conf to the expected configuration? (y/n): ")
+        if confirmation.lower() == "y" and backup_file(nsswitch_path):
+            # Update the file with the correct configuration
+            try:
+                with open(nsswitch_path, "w") as f:
+                    for line in content:
+                        key = line.split(":")[0].strip() if ":" in line else None
+                        if key in expected_config:
+                            f.write(f"{key}: {expected_config[key]}\n")
+                        else:
+                            f.write(line)
+                print("nsswitch.conf has been updated.")
+            except Exception as e:
+                print(f"An error occurred while updating the file: {e}")
+        else:
+            print("No changes made to /etc/nsswitch.conf.")
+    else:
+        print("\nnsswitch.conf is correctly configured.")
+
+# PSMP RPM Repair
+
+def rpm_repair(psmp_version):
+    """
+    Automates the repair of the RPM for the specified PSMP version.
+    """
+    logging.info("PSMP RPM Installation Repair:")
+
+    # Step 1: Find the installation folder containing the RPM that matches the specified PSMP version
+    find_cmd = "find / -type f -name 'CARK*.rpm'"
+    
+    try:
+        logging.info("Searching for the RPM installation folder...")
+        # Get all RPM file paths
+        rpm_files = subprocess.check_output(find_cmd, shell=True, universal_newlines=True).splitlines()
+
+        # Filter RPM files by PSMP version in the file name
+        matching_rpms = [rpm for rpm in rpm_files if psmp_version in rpm]
+
+        if not matching_rpms:
+            logging.info(f"No RPM file found matching version {psmp_version}. Please ensure the correct version is installed.")
+            return  # No matching RPM found
+        
+        # If there are multiple matches, select the first one (or apply more logic if needed)
+        rpm_location = matching_rpms[0]
+        install_folder = os.path.dirname(rpm_location)
+        logging.info(f"Installation folder found at: {install_folder}")
+        
+        # Step 2: Check and modify vault.ini file
+        vault_ini_path = os.path.join(install_folder, "vault.ini")
+        if os.path.exists(vault_ini_path):
+            with open(vault_ini_path, "r") as f:
+                vault_ini_content = f.readlines()
+
+            # Extract the vault IP from the file and confirm with the user
+            vault_ip = None
+            for line in vault_ini_content:
+                if line.startswith("ADDRESS="):
+                    vault_ip = line.strip().split("=")[1]
+                    break
+
+            if vault_ip:
+                logging.info(f"Found vault IP: {vault_ip}")
+                user_ip = input(f"Is the vault IP {vault_ip} correct? (y/n): ").strip().lower()
+                if user_ip != 'y':
+                    new_ip = input("Please enter the correct vault IP: ").strip()
+                    # Update the vault.ini file
+                    for i, line in enumerate(vault_ini_content):
+                        if line.startswith("ADDRESS="):
+                            vault_ini_content[i] = f"ADDRESS={new_ip}\n"
+                            break
+
+                    with open(vault_ini_path, "w") as f:
+                        f.writelines(vault_ini_content)
+                    logging.info(f"Updated vault IP to {new_ip} in vault.ini.")
+            else:
+                logging.info("No vault IP address found in vault.ini.")
+        else:
+            logging.info(f"vault.ini not found in {install_folder}")
+
+        # Step 3: Modify psmpparms.sample file based on user input
+        psmpparms_sample_path = os.path.join(install_folder, "psmpparms.sample")
+        if os.path.exists(psmpparms_sample_path):
+            with open(psmpparms_sample_path, "r") as f:
+                psmpparms_content = f.readlines()
+
+            # Ask for Installation Folder confirmation
+            logging.info("Found psmpparms.sample file.")
+            install_folder_input = input(f"Is the installation folder {install_folder} correct? (y/n): ").strip().lower()
+            if install_folder_input == 'y':
+                for i, line in enumerate(psmpparms_content):
+                    if line.startswith("InstallationFolder="):
+                        psmpparms_content[i] = f"InstallationFolder={install_folder}\n"
+                        break
+                logging.info(f"Installation folder updated to {install_folder} in psmpparms.")
+
+            # Accept CyberArk EULA
+            accept_eula = input("Do you accept the CyberArk EULA? (y/n): ").strip().lower()
+            if accept_eula == 'y':
+                for i, line in enumerate(psmpparms_content):
+                    if line.startswith("AcceptCyberArkEULA="):
+                        psmpparms_content[i] = "AcceptCyberArkEULA=Yes\n"
+                        break
+                logging.info("CyberArk EULA accepted.")
+
+            # Update CreateVaultEnvironment and EnableADBridge
+            skip_vault_env = input("Do you want to skip Vault environment creation? (y/n): ").strip().lower()
+            if skip_vault_env == 'n':
+                for i, line in enumerate(psmpparms_content):
+                    if line.startswith("#CreateVaultEnvironment="):
+                        psmpparms_content[i] = "CreateVaultEnvironment=No\n"
+                        break
+                logging.info("Vault environment creation set to No.")
+
+            disable_adbridge = input("Do you want to disable ADBridge? (y/n): ").strip().lower()
+            if disable_adbridge == 'y':
+                for i, line in enumerate(psmpparms_content):
+                    if line.startswith("#EnableADBridge="):
+                        psmpparms_content[i] = "EnableADBridge=No\n"
+                        break
+                logging.info("ADBridge disabled.")
+
+            # Save changes to psmpparms.sample file
+            with open("/var/tmp/psmpparms", "w") as f:
+                f.writelines(psmpparms_content)
+            logging.info("psmpparms file updated and copied to /var/tmp/psmpparms.")
+
+        else:
+            logging.info(f"psmpparms.sample not found in {install_folder}")
+
+        # Step 4: Execute CreateCredFile and follow instructions
+        create_cred_file_path = os.path.join(install_folder, "CreateCredFile")
+        if os.path.exists(create_cred_file_path):
+            os.chmod(create_cred_file_path, 0o755)  # Make it executable
+            logging.info(f"Created cred file with command: ./CreateCredFile user.cred")
+            subprocess.run([create_cred_file_path, "user.cred"])
+            logging.info("CreateCredFile executed. Please choose Yes on the Entropy file.")
+        else:
+            logging.info(f"CreateCredFile not found in {install_folder}")
+
+        # Step 5: Install the RPM
+        rpm_file_path = os.path.join(install_folder, matching_rpms[0])
+        logging.info(f"Installing RPM from: {rpm_file_path}")
+        subprocess.run(["rpm", "-Uvh", "--force", rpm_file_path])
+        logging.info(f"RPM {rpm_file_path} installed successfully.")
+
+    except subprocess.CalledProcessError:
+        logging.info("Error during RPM file search or installation.")
+
+
+
 if __name__ == "__main__":
 
     # Print the PSMPChecker logo
     print_logo()
+
+    # Load PSMP versions from a JSON file
+    psmp_versions = load_psmp_versions_json('src/versions.json')
+
+    # Get the installed PSMP version
+    psmp_version = get_installed_psmp_version()
+    if not psmp_version:
+        logging.info("[+] No PSMP version found.")
+        sys.exit(1)
 
     # Check if the command-line argument is 'logs', 'string' or 'restore-sshd', then execute the function
     for arg in sys.argv:
@@ -781,15 +1009,10 @@ if __name__ == "__main__":
             logging.info(generate_psmp_connection_string())
             delete_file(log_filename)
             sys.exit(1)
-
-    # Load PSMP versions from a JSON file
-    psmp_versions = load_psmp_versions_json('src/versions.json')
-
-    # Get the installed PSMP version
-    psmp_version = get_installed_psmp_version()
-    if not psmp_version:
-        logging.info("[+] No PSMP version found.")
-        sys.exit(1)
+        elif arg == "repair":
+            rpm_repair(psmp_version)
+            delete_file(log_filename)
+            sys.exit(1)
 
     # Get the Linux distribution and version
     logging.info("PSMP Compatibility Check:")
@@ -830,6 +1053,10 @@ if __name__ == "__main__":
 
     # Check SSHD configuration
     check_sshd_config()
+
+    # Check nsswitch configuration
+    if is_integrated(psmp_version):
+        verify_nsswitch_conf(psmp_version)
 
     #Check SELinux
     print_latest_selinux_prevention_lines()
