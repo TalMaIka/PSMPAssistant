@@ -35,16 +35,6 @@ To collect logs from specified locations and create a zip file, use the `logs` a
 ```bash
 python3 main.py logs
 ```
-![Example-Logs](https://i.imgur.com/JPNZOVs.png)
-
-### Restoring SSHD Configuration
-
-To restore the SSHD configuration from a backup, use the `restore-sshd` argument:
-
-```bash
-python3 main.py restore-sshd
-```
-![Example-Sshd](https://i.imgur.com/LBrUQH7.png)
 
 ### Generating PSMP Connection String
 
@@ -53,7 +43,14 @@ To generate a PSMP connection string, use the `string` argument:
 ```bash
 python3 main.py string
 ```
-![Example-String](https://i.imgur.com/5lPEP5c.png)
+
+### Restoring SSHD Configuration
+
+To restore the SSHD configuration from a backup, use the `restore-sshd` argument:
+
+```bash
+python3 main.py restore-sshd
+```
 
 
 ## Features
