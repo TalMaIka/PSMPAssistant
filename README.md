@@ -11,7 +11,7 @@ To install the dependencies required for this tool, you can use pip and the prov
 ```bash
 git clone https://github.com/TalMaIka/PSMPChecker.git
 cd PSMPChecker
-Requirments are python3-devel and python3-pip
+Requirments are python3 and python3-pip
 [RHEL/CentOS] pip3 install -r requirements.txt / python3 prerequisite.py
 ```
 
