@@ -11,7 +11,7 @@ To install the dependencies required for this tool, you can use pip and the prov
 ```bash
 git clone https://github.com/TalMaIka/PSMPChecker.git
 cd PSMPChecker
-Requirments are python3 and python3-pip
+Requirments are Python3.6+ and Python3-pip
 [RHEL/CentOS] pip3 install -r requirements.txt / python3 prerequisite.py
 ```
 
@@ -34,6 +34,14 @@ To collect logs from specified locations and create a zip file, use the `logs` a
 
 ```bash
 python3 main.py logs
+```
+
+### RPM Repair Automation
+
+To execute the PSMP RPM repair process `repair` argument:
+
+```bash
+python3 main.py repair
 ```
 
 ### Generating PSMP Connection String
@@ -73,6 +81,9 @@ python3 main.py restore-sshd
 
 ### PAM Configuration Check
 - Validates the PAM configuration for certain Linux distributions.
+
+### NSswitch Configuration Check
+- Validates the NSswitch configuration based on PSMP version.
 
 ### SSHD Configuration Check
 - Ensures proper configuration of the SSHD service to allow proper PSMP flow.
