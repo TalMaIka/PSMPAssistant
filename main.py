@@ -1,6 +1,6 @@
-# Copyright: Tal.M @ CyberArk Software
-# Version: 1.0
-# Description: This script performs a series of checks and operations related to CyberArk's Privileged Session Manager for SSH Proxy (PSMP) and SSHD configuration on Linux systems.
+# Copyright: © 2024 CyberArk Community, Made By Tal.M
+# Version: 1.1
+# Description: This tool performs a series of checks and operations related to CyberArk's Privileged Session Manager for SSH Proxy (PSMP) and SSHD configuration on Linux systems.
 
 import json
 import subprocess
@@ -34,9 +34,21 @@ logging.basicConfig(
 
 # Define the signal handler
 def handle_signal(signal, frame):
-    print("\nTerminating tool...") 
+    print("\n\nTerminating tool...") 
+    delete_file(log_filename)
     sleep(1)  
     sys.exit(0) 
+
+# File deletion as argument.
+def delete_file(file_path):
+    try:
+        os.remove(file_path)
+    except FileNotFoundError:
+        print(f"File '{file_path}' not found.")
+    except PermissionError:
+        print(f"Permission denied: Unable to delete '{file_path}'.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 # Set up the signal handler for SIGINT (Ctrl+C)
 signal.signal(signal.SIGINT, handle_signal)
@@ -99,6 +111,39 @@ def is_supported(psmp_versions, psmp_version, distro_name, distro_version):
                         if distro_version.startswith(supported_version):
                             return True
     return False 
+
+# Check if PSMP is in integrated mode
+
+def is_integrated(psmp_version):
+    try:
+        # Check if CARKpsmp and CARKpsmp-infra packages are installed
+        result = subprocess.run(['rpm', '-qa'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        installed_packages = result.stdout.splitlines()
+
+        # Parse and compare the PSMP version
+        try:
+            major, minor = map(int, psmp_version.split('.'))
+        except ValueError:
+            logging.error(f"Invalid PSMP version format: {psmp_version}")
+            return False
+
+        # Check if the PSMP version is 13.2 or higher
+        if major > 13 or (major == 13 and minor >= 2):
+            return True
+
+        # Search for the required packages in the installed RPMs
+        psmp_infra_installed = any(package.startswith("CARKpsmp-infra") for package in installed_packages)
+
+        # Return True if the infra package is installed
+        if psmp_infra_installed:
+            return True
+
+        return False
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to retrieve RPM packages: {e}")
+        return False
+
 
 # Check the status of PSMP and SSHD services
 
@@ -282,12 +327,30 @@ def check_pam_d(distro_name):
     if not found_nullok:
         logging.info("pam.d file missing 'nullok' in the line 'auth sufficient pam_unix.so nullok try_first_pass'")
 
+# Backup a file by making .bak copy
+
+def backup_file(file_path):
+    # Check if file exists
+    if not os.path.isfile(file_path):
+        print(f"File '{file_path}' does not exist.")
+        return False
+
+    backup_path = file_path + ".bak"
+    
+    try:
+        shutil.copy2(file_path, backup_path)
+        print(f"Backup created: '{backup_path}'")
+        return True
+    except Exception as e:
+        print(f"An error occurred while creating the backup: {e}")
+
+
 # Restore the sshd_config file from a backup and rename the current one
 def restore_sshd_config_from_backup():
     # Path to the backup sshd_config file
     backup_file_path = "/opt/CARKpsmp/backup/sshd_config_backup"
     current_sshd_config_path = "/etc/ssh/sshd_config"
-    backup_name = "/etc/ssh/sshd_config.bak"
+    
 
     try:
         # Ask for confirmation from the user
@@ -295,16 +358,10 @@ def restore_sshd_config_from_backup():
         if confirmation.lower() != "y":
             logging.info("Restoration aborted.")
             return
-
-        # Check if the current sshd_config exists and rename it
-        if os.path.exists(current_sshd_config_path):
-            logging.info(f"Renaming current sshd_config to {backup_name}")
-            os.rename(current_sshd_config_path, backup_name)
-
-        # Run the cp command to move the backup to the correct location
-        subprocess.run(["cp", "-i", backup_file_path, current_sshd_config_path])
-
-        logging.info("Successfully restored sshd_config from backup.")
+        if backup_file(current_sshd_config_path):
+            # Move the backup insted of the curent sshd
+            subprocess.run(["cp", "-i", backup_file_path, current_sshd_config_path])
+            logging.info("Successfully restored sshd_config from backup.")
 
     except FileNotFoundError:
         logging.error("Backup file not found.")
@@ -317,55 +374,56 @@ def check_sshd_config():
     confirmation = input("\nPerform sshd configuration check? (y/n): ")
     if confirmation.lower() == "y":
         logging.info("SSHD Configuration Check:")
+        intergated_psmp = is_integrated(psmp_version)
         sshd_config_path = "/etc/ssh/sshd_config"
         found_pmsp_auth_block = False  # PSMP Authentication Configuration Block Start
         found_allow_user = False  # AllowUser should not be present
         found_pubkey_accepted_algorithms = False  # PubkeyAcceptedAlgorithms
         permit_empty_pass = False  # PermitEmptyPasswords yes
         changes_made = False  # Flag to track if any changes were made
+        if (intergated_psmp):
+            try:
+                with open(sshd_config_path, "r") as file:
+                    for line in file:
+                        # Check for PSMP Authentication Configuration Block Start
+                        if line.strip() == "# PSMP Authentication Configuration Block Start":
+                            found_pmsp_auth_block = True
+                        # Check for AllowUser line
+                        if line.strip().startswith("AllowUser"):
+                            found_allow_user = True
+                        # Check if the line contains PubkeyAcceptedAlgorithms and is uncommented
+                        if "PubkeyAcceptedAlgorithms" in line and not line.strip().startswith("#"):
+                            found_pubkey_accepted_algorithms = True
+                        if "PermitEmptyPasswords yes" in line and not line.strip().startswith("#"):
+                            permit_empty_pass = True
+            except FileNotFoundError:
+                logging.info("sshd_config file not found.")
+                return
 
-        try:
-            with open(sshd_config_path, "r") as file:
-                for line in file:
-                    # Check for PSMP Authentication Configuration Block Start
-                    if line.strip() == "# PSMP Authentication Configuration Block Start":
-                        found_pmsp_auth_block = True
-                    # Check for AllowUser line
-                    if line.strip().startswith("AllowUser"):
-                        found_allow_user = True
-                    # Check if the line contains PubkeyAcceptedAlgorithms and is uncommented
-                    if "PubkeyAcceptedAlgorithms" in line and not line.strip().startswith("#"):
-                        found_pubkey_accepted_algorithms = True
-                    if "PermitEmptyPasswords yes" in line and not line.strip().startswith("#"):
-                        permit_empty_pass = True
-        except FileNotFoundError:
-            logging.info("sshd_config file not found.")
-            return
-
-        if not found_pmsp_auth_block:
-            logging.info("PSMP authentication block not found.")
-            # Ask customer if they want to add the PSMP authentication block
-            add_block_confirmation = input("Would you like to add the PSMP authentication block to the sshd_config file? (y/n): ")
-            if add_block_confirmation.lower() == "y":
-                try:
-                    with open(sshd_config_path, "a") as file:
-                        # Append the PSMP Authentication Configuration Block
-                        file.write("\n# PSMP Authentication Configuration Block Start\n")
-                        file.write("Match Group PSMConnectUsers\n")
-                        file.write("  AuthenticationMethods publickey,keyboard-interactive keyboard-interactive\n")
-                        file.write("  AuthorizedKeysCommand /opt/CARKpsmp/bin/psshkeys_runner.sh\n")
-                        file.write("  AuthorizedKeysCommandUser root\n")
-                        file.write("Match Group All\n")
-                        file.write("# PSMP Authentication Configuration Block End\n")
-                    logging.info("PSMP authentication block added to sshd_config.")
-                    changes_made = True  # Mark that changes were made
-                except Exception as e:
-                    logging.info(f"Error while appending the authentication block: {e}")
-            else:
-                logging.info("PSMP authentication block was not added.")
-
-        if not permit_empty_pass:
-            logging.info("PermitEmptyPasswords missing.")
+            if not found_pmsp_auth_block:
+                logging.info("PSMP authentication block not found.")
+                # Ask customer if they want to add the PSMP authentication block
+                add_block_confirmation = input("Would you like to add the PSMP authentication block to the sshd_config file? (y/n): ")
+                if add_block_confirmation.lower() == "y" and backup_file(sshd_config_path):
+                    try:
+                        with open(sshd_config_path, "a") as file:
+                            # Append the PSMP Authentication Configuration Block
+                            file.write("\n# PSMP Authentication Configuration Block Start\n")
+                            file.write("Match Group PSMConnectUsers\n")
+                            file.write("  AuthenticationMethods publickey,keyboard-interactive keyboard-interactive\n")
+                            file.write("  AuthorizedKeysCommand /opt/CARKpsmp/bin/psshkeys_runner.sh\n")
+                            file.write("  AuthorizedKeysCommandUser root\n")
+                            file.write("Match Group All\n")
+                            file.write("# PSMP Authentication Configuration Block End\n")
+                        logging.info("PSMP authentication block added to sshd_config.")
+                        changes_made = True  # Mark that changes were made
+                    except Exception as e:
+                        logging.info(f"Error while appending the authentication block: {e}")
+                else:
+                    logging.info("PSMP authentication block was not added.")
+        else:
+            if not permit_empty_pass:
+                logging.info("PermitEmptyPasswords missing.")
         if found_allow_user:
             logging.info("AllowUser mentioned found.")
         if not found_pubkey_accepted_algorithms:
@@ -431,7 +489,7 @@ def logs_collect():
             else:
                 print(f"Folder not found: {folder}")
 
-        current_date = datetime.now().strftime("%m.%d.%y")
+        current_date = datetime.now().strftime("PSMPChecker-%m-%d-%y-%H:%M")
 
         # Create a zip file with the specified name format
         zip_filename = f"PSMP_Logs_{current_date}.zip"
@@ -468,7 +526,7 @@ def check_debug_level():
                 print("Correct SSHD LogLevel found in sshd_config")
             elif line.strip() == "LogLevel INFO":
                 confirmation = input("Would you like to elevate sshd LogLevel to DEBUG3? (y/n): ").strip().lower()
-                if confirmation == "y":
+                if confirmation == "y" and backup_file(ssh_config_path):
                     lines[i] = f"LogLevel {desired_log_level}\n"
                     changes_made = True
                 else:
@@ -574,8 +632,11 @@ def search_secure_log(distro_name):
         return []
     # Define patterns for failed connection attempts
     failed_patterns = [
-        r'Failed password for',
-        r'authentication failure',
+        r'Permission denied',
+        r'Server refused our key'
+        r'Unable to negotiate with \S+ port \d+: no matching key exchange method found. Their offer: .+',
+        r'Failed password for+',
+        r'Authentication failure',
         r'Failed \S+ from \S+ port \d+ ssh2',
         r'Invalid user \S+ from \S+',
         r'Connection closed by \S+ port \d+ \[preauth\]',
@@ -603,7 +664,11 @@ def search_log_for_patterns():
     found = False
 
     patterns = [
+    "Permission denied",
+    "Could not chdir to home directory /home/PSMConnect: Permission denied",
+    "Failed to add the host to the list of known hosts (/home/PSMShadowUser/.ssh/known_hosts).",
     "ITACM022S Unable to connect to the vault",
+    "PSMPAP100E Failed to connect the PSM SSH Proxy to the Vault",
     "PSMPPS037E PSM SSH Proxy has been terminated.",
     "PSMSC023E LoadLocalUserProfile : Failed to load user profile for local user",
     "ITATS108E Authentication failure for User"
@@ -679,21 +744,43 @@ def print_latest_selinux_prevention_lines():
             logging.info(f"Error: You do not have permission to access '{log_file_path}'.")
 
 
+# Disable nscd service (if running, stop and disble)
+
+def disable_nscd_service():
+    try:
+        # Check if the nscd service is running
+        result = subprocess.run(["systemctl", "is-active", "nscd"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        if result.stdout.strip() == "active":
+            confirmation = input("\nNSCD service is active, Terminate and disable to eliminate future issues? (y/n): ")
+            if confirmation == "y":
+                # Stop and disable the nscd service
+                subprocess.run(["systemctl", "stop", "nscd"], check=True)
+                subprocess.run(["systemctl", "disable", "nscd"], check=True)
+                logging.info("NSCD Stopped and Disabled.")
+        else:
+            logging.info("NSCD Service Is Not Running.")
+    except subprocess.CalledProcessError as e:
+        logging.info(f"Error: {e}")
+
 if __name__ == "__main__":
-    # Check if the command-line argument is 'logs' or 'restore-sshd', then execute the function
+
+    # Print the PSMPChecker logo
+    print_logo()
+
+    # Check if the command-line argument is 'logs', 'string' or 'restore-sshd', then execute the function
     for arg in sys.argv:
         if arg == "logs":
             logs_collect()
+            delete_file(log_filename)
             sys.exit(1)
         elif arg == "restore-sshd":
             restore_sshd_config_from_backup()
+            delete_file(log_filename)
             sys.exit(1)
         elif arg == "string":
             logging.info(generate_psmp_connection_string())
+            delete_file(log_filename)
             sys.exit(1)
-            
-    # Print the PSMPChecker logo
-    print_logo()
 
     # Load PSMP versions from a JSON file
     psmp_versions = load_psmp_versions_json('src/versions.json')
@@ -733,6 +820,9 @@ if __name__ == "__main__":
     logging.info(f"PSMP Service Status: {service_status.get('psmpsrv', 'Unavailable')}")
     logging.info(f"SSHD Service Status: {service_status.get('sshd', 'Unavailable')}")
     
+    # NSCD service check and disable. 
+    disable_nscd_service()
+
     # Check OpenSSH version
     success, message, ssh_version = check_openssh_version()
     if not success:
