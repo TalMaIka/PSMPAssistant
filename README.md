@@ -92,6 +92,9 @@ python3 main.py restore-sshd
 - Collects logs from specified locations and creates a zip file for analysis.
  + Checks if the SSHD debug level is set to DEBUG3.
 
+### RPM Installation Repair
+- Automates the pre-installation steps by locating the RPM folder *matching* the PSMP installed version followed by executing the repair.
+
 ### SSHD Configuration Restoration
 - Restores the SSHD configuration from a backup file located in opt/CARKpsmp/backup/sshd_config_backup.
 
