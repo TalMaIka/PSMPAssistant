@@ -979,6 +979,18 @@ def rpm_repair(psmp_version):
 
     except subprocess.CalledProcessError:
         logging.info("Error during RPM file search or installation.")
+        # Do you wish to see the installation logs /var/tmp/psmp_install.log
+        confirmation = input("Do you want to see the installation logs? (y/n): ")
+        if confirmation.lower() == "y":
+            try:
+                with open("/var/tmp/psmp_install.log", "r") as f:
+                    for line in f:
+                        logging.info(line.strip())
+            except FileNotFoundError:
+                logging.info("Installation log file not found.")
+    except Exception as e:
+        logging.info(f"An error occurred: {e}")
+        
 
 
 
