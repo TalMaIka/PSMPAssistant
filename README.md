@@ -65,10 +65,12 @@ python3 main.py restore-sshd
 
 ### Compatibility Validation
 - Ensures that the installed PSMP version is compatible with the detected Linux distribution and version based on official CyberArk documentation.
+ + https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20sysreq/system%20requirements%20-%20psmp.htm
 
 ### Service Monitoring
 - Checks and verifies the status of PSMP and SSHD services.
  + Checks communication between PSMP and Vault server, including options to update the Vault IP address if needed.
+ + Disbale NSCD - https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/before-installing-psmp.htm#DisableNSCD
 
 ### OpenSSH Version Check
 - Verifies if the installed OpenSSH version meets the required version.
@@ -77,13 +79,16 @@ python3 main.py restore-sshd
 - Checks if the system hostname is set to a unique value to avoid future issues.
 
 ### System Resource Check
-- Monitors CPU and memory usage to ensure they are within acceptable limits and Verifies if there is sufficient disk space.
+- Monitors CPU and memory usage to ensure they are within acceptable limits and verifies if there is sufficient disk space.
+ + https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20sysreq/system%20requirements%20-%20psmp.htm
 
 ### PAM Configuration Check
 - Validates the PAM configuration for certain Linux distributions.
+ + https://community.cyberark.com/s/article/00004683
 
 ### NSswitch Configuration Check
 - Validates the NSswitch configuration based on PSMP version.
+ + https://community.cyberark.com/s/article/PSM-SSH-Proxy-Failed-to-start
 
 ### SSHD Configuration Check
 - Ensures proper configuration of the SSHD service to allow proper PSMP flow.
@@ -91,15 +96,18 @@ python3 main.py restore-sshd
 ### Logs Collection
 - Collects logs from specified locations and creates a zip file for analysis.
  + Checks if the SSHD debug level is set to DEBUG3.
+ + https://community.cyberark.com/s/article/00003368
 
 ### RPM Installation Repair
 - Automates the pre-installation steps by locating the RPM folder *matching* the PSMP installed version followed by executing the repair.
+ + https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/before-installing-psmp.htm
 
 ### SSHD Configuration Restoration
 - Restores the SSHD configuration from a backup file located in opt/CARKpsmp/backup/sshd_config_backup.
 
 ### PSMP Connection String Generation
 - Generates a PSMP connection string based on user input. 
+ + https://cyberark.my.site.com/s/article/PSM-for-SSH-Syntax-Cheat-Sheet
 
 ### Secure and PSMPTrace Logs Pattern Detection
 - Searches the `PSMPTrace.log` and `secure` files for specific error patterns and alerts to diagnose potential issues.
