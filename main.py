@@ -290,6 +290,7 @@ def check_openssh_version():
         # Get the version of OpenSSH installed
         ssh_version = get_openssh_version()
         if ssh_version is not None:
+            sleep(1)
             if ssh_version >= 7.7:
                 return True, "", ssh_version
             else:
@@ -375,6 +376,7 @@ def check_sshd_config():
     confirmation = input("\nPerform sshd configuration check? (y/n): ")
     if confirmation.lower() == "y":
         logging.info("SSHD Configuration Check:")
+        sleep(1)
         intergated_psmp = is_integrated(psmp_version)
         sshd_config_path = "/etc/ssh/sshd_config"
         found_pmsp_auth_block = False  # PSMP Authentication Configuration Block Start
@@ -389,6 +391,7 @@ def check_sshd_config():
                         # Check if the file is managed by a configuration tool.
                         if "Ansible managed" in line or "Puppet managed" in line or "Chef managed" in line:
                             logging.info(f"[!] The sshd_config is managed by a configuration tool: {line.strip()}") 
+                            sleep(1)
                         # Check for PSMP Authentication Configuration Block Start
                         if line.strip() == "# PSMP Authentication Configuration Block Start":
                             found_pmsp_auth_block = True
@@ -410,6 +413,7 @@ def check_sshd_config():
                 add_block_confirmation = input("Would you like to add the PSMP authentication block to the sshd_config file? (y/n): ")
                 if add_block_confirmation.lower() == "y" and backup_file(sshd_config_path):
                     try:
+                        sleep(1)
                         with open(sshd_config_path, "a") as file:
                             # Append the PSMP Authentication Configuration Block
                             file.write("\n# PSMP Authentication Configuration Block Start\n")
@@ -419,7 +423,8 @@ def check_sshd_config():
                             file.write("  AuthorizedKeysCommandUser root\n")
                             file.write("Match Group All\n")
                             file.write("# PSMP Authentication Configuration Block End\n")
-                        logging.info("PSMP authentication block added to sshd_config.")
+                        logging.info("PSMP authentication block added to sshd_config.\n")
+                        sleep(1)
                         changes_made = True  # Mark that changes were made
                     except Exception as e:
                         logging.info(f"Error while appending the authentication block: {e}")
@@ -439,6 +444,7 @@ def check_sshd_config():
         if changes_made:
             restart_confirmation = input("Changes were made to the sshd_config. Would you like to restart the sshd service for the changes to take effect? (y/n): ")
             if restart_confirmation.lower() == "y":
+                sleep(1)
                 try:
                     subprocess.run(["systemctl", "restart", "sshd"], check=True)
                     logging.info("[+] SSHD service restarted successfully.")
@@ -465,7 +471,7 @@ def check_sshd_config():
                 for line in file:
                     # Check if the file is managed by a configuration tool
                     if "Ansible managed" in line.strip() or "Puppet managed" in line.strip() or "Chef managed" in line.strip():
-                        logging.info(f"[!] The sshd_config is managed by a configuration tool: {line.strip()}\n     Make sure to update the latest version if change where made.")
+                        logging.info(f"[!] The sshd_config is managed by a configuration tool: {line.strip()}\n     Make sure to update the latest version if change where made.\n")
                     # Check for PSMP Authentication Configuration Block Start
                     if line.strip() == "# PSMP Authentication Configuration Block Start":
                         found_pmsp_auth_block = True
@@ -774,6 +780,7 @@ def search_log_for_patterns():
 def hostname_check():
     hostname = socket.gethostname()
     # Check if the hostname includes 'localhost'
+    sleep(1)
     if 'localhost' in hostname.lower():
         logging.info(f"\n[!] Hostname: '{hostname}' as default value, Change it to enique hostname to eliminate future issues.")
     return hostname
@@ -785,6 +792,7 @@ def print_latest_selinux_prevention_lines():
     confirmation = input("\nDo you want to check SELinux? (y/n): ")
     if confirmation.lower() != "n":
         logging.info("\nChecking SELinux...")
+        sleep(1)
         try:
             # Run the 'sestatus' command to check SELinux status
             result = subprocess.run(['sestatus'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
@@ -853,6 +861,7 @@ def verify_nsswitch_conf(psmp_version):
     confirmation = input("\nPerform nsswitch.conf configuration check? (y/n): ")
     if confirmation.lower() == "y":
         logging.info("nsswitch.conf Configuration Check:")
+        sleep(1)
         try:
             psmp_version = float(psmp_version)
         except ValueError:
@@ -911,6 +920,7 @@ def verify_nsswitch_conf(psmp_version):
             
             confirmation = input("Would you like to update /etc/nsswitch.conf to the expected configuration? (y/n): ")
             if confirmation.lower() == "y" and backup_file(nsswitch_path):
+                sleep(1)
                 # Update the file with the correct configuration
                 try:
                     with open(nsswitch_path, "w") as f:
@@ -1114,6 +1124,7 @@ if __name__ == "__main__":
 
     # Get the Linux distribution and version
     logging.info("\nPSMP Compatibility Check:")
+    sleep(1)
     distro_name, distro_version = get_linux_distribution()
     # Check compatibility
     if is_supported(psmp_versions, psmp_version, distro_name, distro_version):
@@ -1128,12 +1139,18 @@ if __name__ == "__main__":
     # Check if the hostname changed from default value
     hostname_check() 
 
+    # Check OpenSSH version
+    success, message, ssh_version = check_openssh_version()
+    if not success:
+        logging.info("\n"+message)
+
     # Check nsswitch configuration
     if is_integrated(psmp_version):
         verify_nsswitch_conf(psmp_version)
 
     # Check system resources load.
-    logging.info("\nCheking system resources load:")
+    logging.info("\nChecking system resources load:")
+    sleep(1)
     logging.info(check_disk_space()[1])
     logging.info(check_system_resources()[1])
 
@@ -1148,10 +1165,24 @@ if __name__ == "__main__":
         logging.info("\nPAM Configuration Check:")
         check_pam_d(distro_name)
 
-    # Check OpenSSH version
-    success, message, ssh_version = check_openssh_version()
-    if not success:
-        logging.info("\n"+message)
+    # Search for failed connection attempts in the secure log
+    confirmation = input("\nPerform search for patterns in secure logs? (y/n): ")
+    if confirmation == "y":
+        logging.info("\nSearching secure logs...")
+        sleep(1)
+        failed_attempts = search_secure_log(distro_name)
+        if not failed_attempts:
+            logging.info("No lines containing any of the patterns found.")
+        else:
+            for attempt in failed_attempts:
+                logging.info(attempt)
+
+    # Search for patterns in the PSMPTrace.log file
+    confirmation = input("\nPerform search for patterns in PSMPTrace.log? (y/n): ")
+    if confirmation == "y":
+        logging.info("\nSearching PSMPTrace.log...")
+        sleep(1)
+        search_log_for_patterns()
 
     # Check service status
     logging.info("\nServices Availability Check:")
@@ -1166,23 +1197,6 @@ if __name__ == "__main__":
     
     # NSCD service check and disable. 
     disable_nscd_service()
-
-    # Search for failed connection attempts in the secure log
-    confirmation = input("\nPerform search for patterns in secure logs? (y/n): ")
-    if confirmation == "y":
-        logging.info("\nSearching secure logs...")
-        failed_attempts = search_secure_log(distro_name)
-        if not failed_attempts:
-            logging.info("No lines containing any of the patterns found.")
-        else:
-            for attempt in failed_attempts:
-                logging.info(attempt)
-
-    # Search for patterns in the PSMPTrace.log file
-    confirmation = input("\nPerform search for patterns in PSMPTrace.log? (y/n): ")
-    if confirmation == "y":
-        logging.info("\nSearching PSMPTrace.log...")
-        search_log_for_patterns()
 
      # Offer the customer to repair the PSMP Installation RPM
     if service_status.get('psmpsrv', 'Unavailable') != "Running and communicating with Vault":
