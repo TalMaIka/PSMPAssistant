@@ -199,7 +199,7 @@ def check_vault_comm(service_status):
         if confirmation.lower() == "y":
             # Check if 'nc' (Netcat) is installed
             if not is_nc_installed():
-                logging.info("[-] Netcat (nc) is not installed. Please install it to proceed with the communication check.")
+                logging.info("[!] Netcat (nc) is not installed. Please install it to proceed with the communication check.")
                 sys.exit(1)
             
             # Fetch the vault address from the /opt/CARKpsmp/vault.ini file
@@ -254,10 +254,11 @@ def check_vault_comm(service_status):
                 if restart_confirmation.lower() == "y":
                     logging.info("[+] Restarting PSMP service...")
                     try:
-                        subprocess.run(["systemctl", "restart", "psmpsrv"], check=True)
                         service_status = check_services_status()
                         if service_status["psmpsrv"] == "[-] Inactive" or service_status["psmpsrv"] == "[-] Running but not communicating with Vault":
                             logging.info("[-] PSMP service issue.")
+                        else:
+                            return True
                     except subprocess.CalledProcessError as e:
                         logging.info(f"Unable to restart service: {e}")
                         sys.exit(1)
@@ -292,7 +293,7 @@ def check_openssh_version():
             if ssh_version >= 7.7:
                 return True, "", ssh_version
             else:
-                return False, f"[-] OpenSSH version is: {ssh_version}, required version 7.7 and above.", ssh_version
+                return False, f"[!] OpenSSH version is: {ssh_version}, required version 7.7 and above.", ssh_version
         else:
             return False, "Failed to determine OpenSSH version.", None
     except subprocess.CalledProcessError as e:
@@ -353,7 +354,6 @@ def restore_sshd_config_from_backup():
     backup_file_path = "/opt/CARKpsmp/backup/sshd_config_backup"
     current_sshd_config_path = "/etc/ssh/sshd_config"
     
-
     try:
         # Ask for confirmation from the user
         confirmation = input("Do you want to restore sshd_config from backup? (y/n): ")
@@ -369,10 +369,9 @@ def restore_sshd_config_from_backup():
         logging.error("Backup file not found.")
     except Exception as e:
         logging.error(f"Error: {e}")
-        
-# Check the sshd_config file for misconfigurations related to PSMP
 
 def check_sshd_config():
+
     confirmation = input("\nPerform sshd configuration check? (y/n): ")
     if confirmation.lower() == "y":
         logging.info("SSHD Configuration Check:")
@@ -387,6 +386,9 @@ def check_sshd_config():
             try:
                 with open(sshd_config_path, "r") as file:
                     for line in file:
+                        # Check if the file is managed by a configuration tool.
+                        if "Ansible managed" in line or "Puppet managed" in line or "Chef managed" in line:
+                            logging.info(f"[!] The sshd_config is managed by a configuration tool: {line.strip()}") 
                         # Check for PSMP Authentication Configuration Block Start
                         if line.strip() == "# PSMP Authentication Configuration Block Start":
                             found_pmsp_auth_block = True
@@ -429,7 +431,84 @@ def check_sshd_config():
         if found_allow_user:
             logging.info("AllowUser mentioned found.")
         if not found_pubkey_accepted_algorithms:
-            logging.info("[-] SSH-Keys auth not enabled, sshd_config missing 'PubkeyAcceptedAlgorithms'.")
+            logging.info("[!] SSH-Keys auth not enabled, sshd_config missing 'PubkeyAcceptedAlgorithms'.")
+        else:
+            logging.info("No misconfiguration found related to sshd_config.")
+
+        # If changes were made, ask the user to restart the sshd service
+        if changes_made:
+            restart_confirmation = input("Changes were made to the sshd_config. Would you like to restart the sshd service for the changes to take effect? (y/n): ")
+            if restart_confirmation.lower() == "y":
+                try:
+                    subprocess.run(["systemctl", "restart", "sshd"], check=True)
+                    logging.info("[+] SSHD service restarted successfully.")
+                except subprocess.CalledProcessError as e:
+                    logging.info(f"Error while restarting sshd service: {e}")
+            else:
+                logging.info("Please restart the sshd service manually for the changes to take effect.")
+        
+# Check the sshd_config file for misconfigurations related to PSMP
+
+def check_sshd_config():
+    confirmation = input("\nPerform sshd configuration check? (y/n): ")
+    if confirmation.lower() == "y":
+        logging.info("SSHD Configuration Check:")
+        intergated_psmp = is_integrated(psmp_version)
+        sshd_config_path = "/etc/ssh/sshd_config"
+        found_pmsp_auth_block = False  # PSMP Authentication Configuration Block Start
+        found_allow_user = False  # AllowUser should not be present
+        found_pubkey_accepted_algorithms = False  # PubkeyAcceptedAlgorithms
+        permit_empty_pass = False  # PermitEmptyPasswords yes
+        changes_made = False  # Flag to track if any changes were made
+        try:
+            with open(sshd_config_path, "r") as file:
+                for line in file:
+                    # Check if the file is managed by a configuration tool
+                    if "Ansible managed" in line.strip() or "Puppet managed" in line.strip() or "Chef managed" in line.strip():
+                        logging.info(f"[!] The sshd_config is managed by a configuration tool: {line.strip()}\n     Make sure to update the latest version if change where made.")
+                    # Check for PSMP Authentication Configuration Block Start
+                    if line.strip() == "# PSMP Authentication Configuration Block Start":
+                        found_pmsp_auth_block = True
+                    # Check for AllowUser line
+                    if line.strip().startswith("AllowUser"):
+                        found_allow_user = True
+                    # Check if the line contains PubkeyAcceptedAlgorithms and is uncommented
+                    if "PubkeyAcceptedAlgorithms" in line and not line.strip().startswith("#"):
+                        found_pubkey_accepted_algorithms = True
+                    if "PermitEmptyPasswords yes" in line and not line.strip().startswith("#"):
+                        permit_empty_pass = True
+        except FileNotFoundError:
+            logging.info("sshd_config file not found.")
+            return
+
+        if not found_pmsp_auth_block and intergated_psmp:
+            logging.info("PSMP authentication block not found.")
+            # Ask customer if they want to add the PSMP authentication block
+            add_block_confirmation = input("Would you like to add the PSMP authentication block to the sshd_config file? (y/n): ")
+            if add_block_confirmation.lower() == "y" and backup_file(sshd_config_path):
+                try:
+                    with open(sshd_config_path, "a") as file:
+                        # Append the PSMP Authentication Configuration Block
+                        file.write("\n# PSMP Authentication Configuration Block Start\n")
+                        file.write("Match Group PSMConnectUsers\n")
+                        file.write("  AuthenticationMethods publickey,keyboard-interactive keyboard-interactive\n")
+                        file.write("  AuthorizedKeysCommand /opt/CARKpsmp/bin/psshkeys_runner.sh\n")
+                        file.write("  AuthorizedKeysCommandUser root\n")
+                        file.write("Match Group All\n")
+                        file.write("# PSMP Authentication Configuration Block End\n")
+                    logging.info("PSMP authentication block added to sshd_config.")
+                    changes_made = True  # Mark that changes were made
+                except Exception as e:
+                    logging.info(f"Error while appending the authentication block: {e}")
+            else:
+                logging.info("PSMP authentication block was not added.")
+        
+        if not permit_empty_pass and not intergated_psmp:
+            logging.info("PermitEmptyPasswords missing.")
+        if found_allow_user:
+            logging.info("AllowUser mentioned found.")
+        if not found_pubkey_accepted_algorithms:
+            logging.info("[!] SSH-Keys auth not enabled, sshd_config missing 'PubkeyAcceptedAlgorithms'.")
         else:
             logging.info("No misconfiguration found related to sshd_config.")
 
@@ -696,7 +775,7 @@ def hostname_check():
     hostname = socket.gethostname()
     # Check if the hostname includes 'localhost'
     if 'localhost' in hostname.lower():
-        logging.info(f"\n[-] Hostname: '{hostname}' as default value, Change it to enique hostname to eliminate future issues.")
+        logging.info(f"\n[!] Hostname: '{hostname}' as default value, Change it to enique hostname to eliminate future issues.")
     return hostname
 
 #SELinux check
@@ -768,94 +847,93 @@ def disable_nscd_service():
 # Veify nsswitch configuration
 
 def verify_nsswitch_conf(psmp_version):
-    """
-    Verifies and, if necessary, updates the /etc/nsswitch.conf file to match
-    the expected configuration for the given PSMP version.
-    """
+
     nsswitch_path = "/etc/nsswitch.conf"
     
-    # Ensure psmp_version is treated as a float for comparison
-    try:
-        psmp_version = float(psmp_version)
-    except ValueError:
-        print("Invalid PSMP version. Please provide a numeric version.")
-        return False
-    
-    # Define expected configurations based on PSMP version
-    expected_config_v12_2_or_newer = {
-        "passwd": "files psmp sss",
-        "shadow": "files sss",
-        "group": "files psmp sss",
-        "initgroups": "files psmp"
-    }
-
-    expected_config_older_than_v12_2 = {
-        "passwd": "files psmp sss",
-        "shadow": "files sss",
-        "group": "files psmp sss",
-        "initgroups": "files sss"  # Note that this is commented out in expected file
-    }
-    
-    # Choose expected config based on version
-    if psmp_version >= 12.2:
-        expected_config = expected_config_v12_2_or_newer
-    else:
-        expected_config = expected_config_older_than_v12_2
-
-    # Read the file content
-    try:
-        with open(nsswitch_path, "r") as f:
-            content = f.readlines()
-    except FileNotFoundError:
-        print(f"{nsswitch_path} not found.")
-        return False
-
-    # Parse the file content
-    actual_config = {}
-    for line in content:
-        line = line.strip()
-        if line and not line.startswith("#"):  # Ignore empty lines and comments
-            key, *value = line.split(":")
-            actual_config[key.strip()] = value[0].strip() if value else ""
-
-    # Compare actual config with expected config
-    discrepancies = []
-    for key, expected_value in expected_config.items():
-        actual_value = actual_config.get(key)
-        if actual_value != expected_value:
-            discrepancies.append((key, actual_value, expected_value))
-
-    # If discrepancies are found, prompt for confirmation
-    if discrepancies:
-        print("Discrepancies found in /etc/nsswitch.conf:")
-        for key, actual, expected in discrepancies:
-            print(f" - {key}: found '{actual}', expected '{expected}'")
+    confirmation = input("\nPerform nsswitch.conf configuration check? (y/n): ")
+    if confirmation.lower() == "y":
+        logging.info("nsswitch.conf Configuration Check:")
+        try:
+            psmp_version = float(psmp_version)
+        except ValueError:
+            logging.info("Invalid PSMP version. Please provide a numeric version.")
+            return False
         
-        confirmation = input("Would you like to update /etc/nsswitch.conf to the expected configuration? (y/n): ")
-        if confirmation.lower() == "y" and backup_file(nsswitch_path):
-            # Update the file with the correct configuration
-            try:
-                with open(nsswitch_path, "w") as f:
-                    for line in content:
-                        key = line.split(":")[0].strip() if ":" in line else None
-                        if key in expected_config:
-                            f.write(f"{key}: {expected_config[key]}\n")
-                        else:
-                            f.write(line)
-                print("nsswitch.conf has been updated.")
-            except Exception as e:
-                print(f"An error occurred while updating the file: {e}")
-        else:
-            print("No changes made to /etc/nsswitch.conf.")
-    else:
-        print("\nnsswitch.conf is correctly configured.")
+        # Define expected configurations based on PSMP version
+        expected_config_v12_2_or_newer = {
+            "passwd": "files psmp sss",
+            "shadow": "files sss",
+            "group": "files psmp sss",
+            "initgroups": "files psmp"
+        }
 
-# PSMP RPM Repair
+        expected_config_older_than_v12_2 = {
+            "passwd": "files psmp sss",
+            "shadow": "files sss",
+            "group": "files psmp sss",
+            "initgroups": "files sss"  # Note that this is commented out in expected file
+        }
+        
+        # Choose expected config based on version
+        if psmp_version >= 12.2:
+            expected_config = expected_config_v12_2_or_newer
+        else:
+            expected_config = expected_config_older_than_v12_2
+
+        # Read the file content
+        try:
+            with open(nsswitch_path, "r") as f:
+                content = f.readlines()
+        except FileNotFoundError:
+            logging.info(f"{nsswitch_path} not found.")
+            return False
+
+        # Parse the file content
+        actual_config = {}
+        for line in content:
+            line = line.strip()
+            if line and not line.startswith("#"):  # Ignore empty lines and comments
+                key, *value = line.split(":")
+                actual_config[key.strip()] = value[0].strip() if value else ""
+
+        # Compare actual config with expected config
+        discrepancies = []
+        for key, expected_value in expected_config.items():
+            actual_value = actual_config.get(key)
+            if actual_value != expected_value:
+                discrepancies.append((key, actual_value, expected_value))
+
+        # If discrepancies are found, prompt for confirmation
+        if discrepancies:
+            logging.info("Discrepancies found in /etc/nsswitch.conf:")
+            for key, actual, expected in discrepancies:
+                logging.info(f" - {key}: found '{actual}', expected '{expected}'")
+            
+            confirmation = input("Would you like to update /etc/nsswitch.conf to the expected configuration? (y/n): ")
+            if confirmation.lower() == "y" and backup_file(nsswitch_path):
+                # Update the file with the correct configuration
+                try:
+                    with open(nsswitch_path, "w") as f:
+                        for line in content:
+                            key = line.split(":")[0].strip() if ":" in line else None
+                            if key in expected_config:
+                                f.write(f"{key}: {expected_config[key]}\n")
+                            else:
+                                f.write(line)
+                    logging.info("The nsswitch.conf has been updated.")
+                    logging.info("[!] Machine reboot is mandatory for the changes to take effect.")
+                    sys.exit(1)
+                except Exception as e:
+                    logging.info(f"An error occurred while updating the file: {e}")
+            else:
+                logging.info("No changes made to /etc/nsswitch.conf.")
+        else:
+            logging.info("nsswitch.conf is correctly configured.")
+
+# Automates the repair of the RPM for the specified PSMP version.
 
 def rpm_repair(psmp_version):
-    """
-    Automates the repair of the RPM for the specified PSMP version.
-    """
+
     logging.info(f"PSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
     logging.info("\nPSMP RPM Installation Repair:")
 
@@ -964,10 +1042,19 @@ def rpm_repair(psmp_version):
         # Step 4: Execute CreateCredFile and follow instructions
         create_cred_file_path = os.path.join(install_folder, "CreateCredFile")
         if os.path.exists(create_cred_file_path):
-            os.chmod(create_cred_file_path, 0o755)  # Make it executable
-            logging.info(f"Created cred file with command: ./CreateCredFile user.cred")
+            confirmation = input("Do you allow chmod 755 CreateCredFile (y/n):")
+            if confirmation == "y":
+                os.chmod(create_cred_file_path, 0o755)  # Make it executable
+                logging.info("CreateCredFile executed. Please choose Yes on the Entropy file.")
             subprocess.run([create_cred_file_path, "user.cred"])
-            logging.info("CreateCredFile executed. Please choose Yes on the Entropy file.")
+            # Copy user.cred aand user.cred.entropy to installation folder
+            try:
+                    subprocess.run(["mv", "-f", "user.cred", "user.cred.entropy", install_folder], check=True)
+                    logging.info("user.cred and user.cred.entropy copied to installation folder.")
+            except FileNotFoundError:
+                logging.error("user.cred or user.cred.entropy file not found.")
+            except Exception as e:
+                logging.error(f"Error: {e}")
         else:
             logging.info(f"CreateCredFile not found in {install_folder}")
 
@@ -990,8 +1077,6 @@ def rpm_repair(psmp_version):
                 logging.info("Installation log file not found.")
     except Exception as e:
         logging.info(f"An error occurred: {e}")
-        
-
 
 
 if __name__ == "__main__":
@@ -1005,7 +1090,7 @@ if __name__ == "__main__":
     # Get the installed PSMP version
     psmp_version = get_installed_psmp_version()
     if not psmp_version:
-        logging.info("[+] No PSMP version found.")
+        logging.info("[-] No PSMP version found.")
         sys.exit(1)
 
     # Check if the command-line argument is 'logs', 'string' or 'restore-sshd', then execute the function
@@ -1028,7 +1113,7 @@ if __name__ == "__main__":
             sys.exit(1)
 
     # Get the Linux distribution and version
-    logging.info("PSMP Compatibility Check:")
+    logging.info("\nPSMP Compatibility Check:")
     distro_name, distro_version = get_linux_distribution()
     # Check compatibility
     if is_supported(psmp_versions, psmp_version, distro_name, distro_version):
@@ -1039,37 +1124,21 @@ if __name__ == "__main__":
         if psmp_version == 12.06:
             psmp_version = 12.6
         logging.info(f"Please refer to the PSMP documentation for supported versions.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/Content/PAS%20SysReq/System%20Requirements%20-%20PSMP.htm")
-    hostname_check() # Check if the hostname changed from default value
+    
+    # Check if the hostname changed from default value
+    hostname_check() 
+
+    # Check nsswitch configuration
+    if is_integrated(psmp_version):
+        verify_nsswitch_conf(psmp_version)
 
     # Check system resources load.
     logging.info("\nCheking system resources load:")
     logging.info(check_disk_space()[1])
     logging.info(check_system_resources()[1])
 
-    # Check service status
-    logging.info("\nServices Availability Check:")
-    service_status = check_services_status()
-    # Check if service status is Inactive
-    check_vault_comm(service_status)
-
-    sleep(1)
-    logging.info(f"PSMP Service Status: {service_status.get('psmpsrv', 'Unavailable')}")
-    logging.info(f"SSHD Service Status: {service_status.get('sshd', 'Unavailable')}")
-    
-    # NSCD service check and disable. 
-    disable_nscd_service()
-
-    # Check OpenSSH version
-    success, message, ssh_version = check_openssh_version()
-    if not success:
-        logging.info("\n"+message)
-
     # Check SSHD configuration
     check_sshd_config()
-
-    # Check nsswitch configuration
-    if is_integrated(psmp_version):
-        verify_nsswitch_conf(psmp_version)
 
     #Check SELinux
     print_latest_selinux_prevention_lines()
@@ -1079,10 +1148,29 @@ if __name__ == "__main__":
         logging.info("\nPAM Configuration Check:")
         check_pam_d(distro_name)
 
+    # Check OpenSSH version
+    success, message, ssh_version = check_openssh_version()
+    if not success:
+        logging.info("\n"+message)
+
+    # Check service status
+    logging.info("\nServices Availability Check:")
+    sleep(1)
+    service_status = check_services_status()
+    # Check if service status is Inactive
+    if check_vault_comm(service_status):
+        service_status = check_services_status()
+    sleep(1)
+    logging.info(f"PSMP Service Status: {service_status.get('psmpsrv', 'Unavailable')}")
+    logging.info(f"SSHD Service Status: {service_status.get('sshd', 'Unavailable')}")
+    
+    # NSCD service check and disable. 
+    disable_nscd_service()
+
     # Search for failed connection attempts in the secure log
     confirmation = input("\nPerform search for patterns in secure logs? (y/n): ")
-    logging.info("\nSearching secure logs...")
     if confirmation == "y":
+        logging.info("\nSearching secure logs...")
         failed_attempts = search_secure_log(distro_name)
         if not failed_attempts:
             logging.info("No lines containing any of the patterns found.")
@@ -1095,3 +1183,7 @@ if __name__ == "__main__":
     if confirmation == "y":
         logging.info("\nSearching PSMPTrace.log...")
         search_log_for_patterns()
+
+     # Offer the customer to repair the PSMP Installation RPM
+    if service_status.get('psmpsrv', 'Unavailable') != "Running and communicating with Vault":
+        logging.info("\n[!] Recommended to proceed with a RPM installation repair, for repair automation execute 'python3 main.py repair'")
