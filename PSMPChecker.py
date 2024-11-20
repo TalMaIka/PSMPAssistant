@@ -168,7 +168,7 @@ def check_services_status():
         if "Active: active" in result_psmpsrv:
             with open("/var/opt/CARKpsmp/logs/PSMPConsole.log", "r") as log_file:
                 log_content = log_file.read()
-                if "is up and working with Vault" in log_content:
+                if "is up and working with Vault" and not "Sockets server is down" in log_content:
                     service_statuses["psmpsrv"] = "Running and communicating with Vault"
                 else:
                     service_statuses["psmpsrv"] = "[-] Running but not communicating with Vault"
