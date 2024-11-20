@@ -569,16 +569,19 @@ def check_debug_level():
     changes_made = False
     desired_log_level = "DEBUG3"
 
-    # Check and update LogLevel in sshd_config only if it's set to INFO
+    # Read the sshd_config file
     with open(ssh_config_path, 'r') as file:
         lines = file.readlines()
 
     for i, line in enumerate(lines):
-        if line.strip().startswith("LogLevel "):
-            if line.strip() == f"LogLevel {desired_log_level}":
+        stripped_line = line.strip()
+
+        # Check if LogLevel is uncommented and valid
+        if stripped_line.startswith("LogLevel "):
+            if stripped_line == f"LogLevel {desired_log_level}":
                 print("[+] Correct SSHD LogLevel found in sshd_config")
-            elif line.strip() == "LogLevel INFO":
-                confirmation = input("The LogLevel for 'sshd' is not set to DEBUG3. Would you like to elevate it to DEBUG3? (y/n): ").strip().lower()
+            elif stripped_line == "LogLevel INFO":
+                confirmation = input("The LogLevel for 'sshd' is set to INFO. Would you like to elevate it to DEBUG3? (y/n): ").strip().lower()
                 if confirmation == "y" and backup_file(ssh_config_path):
                     lines[i] = f"LogLevel {desired_log_level}\n"
                     changes_made = True
@@ -587,21 +590,32 @@ def check_debug_level():
                     sys.exit(1)
             break
 
+        # Check if LogLevel is commented out
+        if stripped_line.startswith("#") and "LogLevel" in stripped_line:
+            confirmation = input("The LogLevel for 'sshd' is commented out. Would you like to uncomment and set it to DEBUG3? (y/n): ").strip().lower()
+            if confirmation == "y" and backup_file(ssh_config_path):
+                lines[i] = f"LogLevel {desired_log_level}\n"
+                changes_made = True
+            else:
+                print("LogLevel remains commented; required DEBUG3.")
+                sys.exit(1)
+            break
+
     # Write back the modified lines to sshd_config if changes were made
     if changes_made:
         with open(ssh_config_path, 'w') as file:
             file.writelines(lines)
         print("LogLevel updated to DEBUG3 in sshd_config.")
-        confirmation = input("\nDo you want to restart SSHD for the changes to take effect? \nWill not affect ongoing sessions ! (y/n):")
+        confirmation = input("\nDo you want to restart SSHD for the changes to take effect? \nWill not affect ongoing sessions! (y/n): ")
         if confirmation.lower() == "y":
             try:
                 subprocess.run(["systemctl", "restart", "sshd"], check=True)
                 print("SSHD service restarted successfully.")
-                print("* Kindly reproduce the issue and then collect the logs !.")
+                print("[!] Kindly reproduce the issue and then collect the logs!")
             except subprocess.CalledProcessError as e:
                 print(f"Failed to restart sshd service: {e}")
         else:
-            print("Restart the SSHD service is needed for the changes to take effect.")
+            print("Restarting the SSHD service is needed for the changes to take effect.")
             sys.exit(1)
 
     # Check for the TraceLevels update message in PSMPTrace.log
@@ -621,7 +635,7 @@ def check_debug_level():
             print("1. Go to Administration → Options → Privileged Session Management → General Settings.")
             print("2. Under Server Settings set TraceLevels=1,2,3,4,5,6,7")
             print("3. Under Connection Client Settings set TraceLevels=1,2")
-            print("* Make Sure to Save and Restart psmpsrv service.")
+            print("* Make sure to Save and Restart psmpsrv service.")
     except FileNotFoundError:
         print(f"PSMPTrace.log file not found at {psmp_log_path}.")
 
