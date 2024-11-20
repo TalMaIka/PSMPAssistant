@@ -36,7 +36,7 @@ logging.basicConfig(
 def handle_signal(signal, frame):
     print("\n\nTerminating tool...") 
     delete_file(log_filename)
-    sleep(1)  
+    sleep(2)  
     sys.exit(0) 
 
 # File deletion as argument.
@@ -100,17 +100,29 @@ def get_linux_distribution():
 # Check if the PSMP version is supported for the given Linux distribution and version
 
 def is_supported(psmp_versions, psmp_version, distro_name, distro_version):
-    if psmp_version not in psmp_versions:
-        return False 
+    # Sort the versions to find the nearest fallback
+    sorted_versions = sorted(psmp_versions.keys(), key=lambda v: tuple(map(int, v.split('.'))))
+    
+    # Find the closest previous version
+    fallback_version = None
+    for version in sorted_versions:
+        if tuple(map(int, version.split('.'))) <= tuple(map(int, psmp_version.split('.'))):
+            fallback_version = version
+        else:
+            break
 
-    for version in psmp_versions:
-        if version.startswith(psmp_version):
-            for distro_info in psmp_versions[version]['supported_distributions']:
-                if distro_info['name'].lower() == distro_name.lower():
-                    for supported_version in distro_info.get('versions', []):
-                        if distro_version.startswith(supported_version):
-                            return True
-    return False 
+    # If no fallback is found, return False
+    if fallback_version is None:
+        return False
+    
+    # Check the distribution and version support
+    for distro_info in psmp_versions[fallback_version]['supported_distributions']:
+        if distro_info['name'].lower() == distro_name.lower():
+            for supported_version in distro_info.get('versions', []):
+                if distro_version.startswith(supported_version):
+                    return True
+
+    return False
 
 # Check if PSMP is in integrated mode
 
@@ -195,77 +207,73 @@ def check_vault_comm(service_status):
     if service_status["psmpsrv"] == "[-] Inactive" or service_status["psmpsrv"] == "[-] Running but not communicating with Vault":
         logging.info("[-] The PSMP service is inactive.")
         # Communication check with vault server
-        confirmation = input("Perform communication check with Vault server? (y/n): ")
-        if confirmation.lower() == "y":
             # Check if 'nc' (Netcat) is installed
-            if not is_nc_installed():
-                logging.info("[!] Netcat (nc) is not installed. Please install it to proceed with the communication check.")
-                sys.exit(1)
-            
-            # Fetch the vault address from the /opt/CARKpsmp/vault.ini file
-            vault_address = ""
-            try:
-                with open("/etc/opt/CARKpsmp/vault/vault.ini", "r") as file:
-                    for line in file:
-                        if line.startswith("ADDRESS="):
-                            vault_address = line.split("=")[1].strip()
-                            break
-            except FileNotFoundError:
-                logging.info("[-] Vault.ini file not found.")
-                sys.exit(1)
+        if not is_nc_installed():
+            logging.info("[!] Netcat (nc) is not installed. Please install it to proceed with the communication check.")
+            sys.exit(1)
+        
+        # Fetch the vault address from the /opt/CARKpsmp/vault.ini file
+        vault_address = ""
+        try:
+            with open("/etc/opt/CARKpsmp/vault/vault.ini", "r") as file:
+                for line in file:
+                    if line.startswith("ADDRESS="):
+                        vault_address = line.split("=")[1].strip()
+                        break
+        except FileNotFoundError:
+            logging.info("[-] Vault.ini file not found.")
+            sys.exit(1)
 
-            # If multiple IP addresses are found, select the first one
-            vault_addresses = vault_address.split(",")
-            vault_ip = vault_addresses[0].strip()
+        # If multiple IP addresses are found, select the first one
+        vault_addresses = vault_address.split(",")
+        vault_ip = vault_addresses[0].strip()
 
-            # Ask client for confirmation on the fetched Vault IP address
-            print(f"Fetched Vault IP: {vault_ip}")
-            client_confirmation = input(f"Do you want to proceed with communication check for IP {vault_ip}? (y/n): ")
-            if client_confirmation.lower() != "y":
-                # Allow the user to change the Vault IP address
-                new_vault_ip = input(f"Please enter the new Vault IP address (current: {vault_ip}): ").strip()
-                if new_vault_ip:
-                    vault_ip = new_vault_ip
-                    # Update the vault.ini with the new address
-                    try:
-                        with open("/etc/opt/CARKpsmp/vault/vault.ini", "r") as file:
-                            lines = file.readlines()
-                        with open("/etc/opt/CARKpsmp/vault/vault.ini", "w") as file:
-                            for line in lines:
-                                if line.startswith("ADDRESS="):
-                                    file.write(f"ADDRESS={vault_ip}\n")
-                                else:
-                                    file.write(line)
-                        logging.info(f"Vault IP address updated to {vault_ip} in vault.ini.")
-                    except FileNotFoundError:
-                        logging.info("[-] Vault.ini file not found.")
-                        sys.exit(1)
-                else:
-                    logging.info("No new IP entered, proceeding with the existing address.")
+        # Ask client for confirmation on the fetched Vault IP address
+        print(f"Fetched Vault IP: {vault_ip}")
+        client_confirmation = input(f"Does the fetched Vault IP is correct: {vault_ip}? (y/n): ")
+        if client_confirmation.lower() != "y":
+            # Allow the user to change the Vault IP address
+            new_vault_ip = input(f"Please enter the new Vault IP address (current: {vault_ip}): ").strip()
+            if new_vault_ip:
+                vault_ip = new_vault_ip
+                # Update the vault.ini with the new address
+                try:
+                    with open("/etc/opt/CARKpsmp/vault/vault.ini", "r") as file:
+                        lines = file.readlines()
+                    with open("/etc/opt/CARKpsmp/vault/vault.ini", "w") as file:
+                        for line in lines:
+                            if line.startswith("ADDRESS="):
+                                file.write(f"ADDRESS={vault_ip}\n")
+                            else:
+                                file.write(line)
+                    logging.info(f"Vault IP address updated to {vault_ip} in vault.ini.")
+                except FileNotFoundError:
+                    logging.info("[-] Vault.ini file not found.")
+                    sys.exit(1)
+            else:
+                logging.info("No new IP entered, proceeding with the existing address.")
 
-            # Perform the communication check to the Vault IP
-            logging.info("Checking communication to the vault...")
-            sleep(1)
-            try:
-                subprocess.run(["nc", "-zv", vault_ip, "1858"], check=True)
-                logging.info("[+] Communication to the vault is successful.")
-                # Optionally restart PSMP service after communication check
-                restart_confirmation = input("Restart PSMP service? (y/n): ")
-                if restart_confirmation.lower() == "y":
-                    logging.info("[+] Restarting PSMP service...")
-                    try:
-                        service_status = check_services_status()
-                        if service_status["psmpsrv"] == "[-] Inactive" or service_status["psmpsrv"] == "[-] Running but not communicating with Vault":
-                            logging.info("[-] PSMP service issue.")
-                        else:
-                            return True
-                    except subprocess.CalledProcessError as e:
-                        logging.info(f"Unable to restart service: {e}")
-                        sys.exit(1)
-            except subprocess.CalledProcessError as e:
-                logging.info(f"Communication to the vault failed: {e}")
-                sys.exit(1)
-        else:
+        # Perform the communication check to the Vault IP
+        logging.info("Checking communication to the vault...")
+        sleep(2)
+        try:
+            subprocess.run(["nc", "-zv", vault_ip, "1858"], check=True)
+            logging.info("[+] Communication to the vault is successful.")
+            # Optionally restart PSMP service after communication check
+            restart_confirmation = input("Restart PSMP service? (y/n): ")
+            if restart_confirmation.lower() == "y":
+                logging.info("[+] Restarting PSMP service...")
+                try:
+                    service_status = check_services_status()
+                    if service_status["psmpsrv"] == "[-] Inactive" or service_status["psmpsrv"] == "[-] Running but not communicating with Vault":
+                        logging.info("[-] PSMP service issue.")
+                    else:
+                        return True
+                except subprocess.CalledProcessError as e:
+                    logging.info(f"Unable to restart service: {e}")
+                    sys.exit(1)
+        except subprocess.CalledProcessError as e:
+            logging.info(f"Communication to the vault failed: {e}")
             sys.exit(1)
 
 # OpenSSH version check regarding the PSMP compatibility
@@ -290,7 +298,7 @@ def check_openssh_version():
         # Get the version of OpenSSH installed
         ssh_version = get_openssh_version()
         if ssh_version is not None:
-            sleep(1)
+            sleep(2)
             if ssh_version >= 7.7:
                 return True, "", ssh_version
             else:
@@ -338,8 +346,8 @@ def backup_file(file_path):
     if not os.path.isfile(file_path):
         print(f"File '{file_path}' does not exist.")
         return False
-
-    backup_path = file_path + ".bak"
+    log_filename = datetime.now().strftime("PSMPChecker-%m-%d-%y-%H:%M.bak")
+    backup_path = file_path + "_" + log_filename
     
     try:
         shutil.copy2(file_path, backup_path)
@@ -370,95 +378,12 @@ def restore_sshd_config_from_backup():
         logging.error("Backup file not found.")
     except Exception as e:
         logging.error(f"Error: {e}")
-
-def check_sshd_config():
-
-    confirmation = input("\nPerform sshd configuration check? (y/n): ")
-    if confirmation.lower() == "y":
-        logging.info("SSHD Configuration Check:")
-        sleep(1)
-        intergated_psmp = is_integrated(psmp_version)
-        sshd_config_path = "/etc/ssh/sshd_config"
-        found_pmsp_auth_block = False  # PSMP Authentication Configuration Block Start
-        found_allow_user = False  # AllowUser should not be present
-        found_pubkey_accepted_algorithms = False  # PubkeyAcceptedAlgorithms
-        permit_empty_pass = False  # PermitEmptyPasswords yes
-        changes_made = False  # Flag to track if any changes were made
-        if (intergated_psmp):
-            try:
-                with open(sshd_config_path, "r") as file:
-                    for line in file:
-                        # Check if the file is managed by a configuration tool.
-                        if "Ansible managed" in line or "Puppet managed" in line or "Chef managed" in line:
-                            logging.info(f"[!] The sshd_config is managed by a configuration tool: {line.strip()}") 
-                            sleep(1)
-                        # Check for PSMP Authentication Configuration Block Start
-                        if line.strip() == "# PSMP Authentication Configuration Block Start":
-                            found_pmsp_auth_block = True
-                        # Check for AllowUser line
-                        if line.strip().startswith("AllowUser"):
-                            found_allow_user = True
-                        # Check if the line contains PubkeyAcceptedAlgorithms and is uncommented
-                        if "PubkeyAcceptedAlgorithms" in line and not line.strip().startswith("#"):
-                            found_pubkey_accepted_algorithms = True
-                        if "PermitEmptyPasswords yes" in line and not line.strip().startswith("#"):
-                            permit_empty_pass = True
-            except FileNotFoundError:
-                logging.info("sshd_config file not found.")
-                return
-
-            if not found_pmsp_auth_block:
-                logging.info("PSMP authentication block not found.")
-                # Ask customer if they want to add the PSMP authentication block
-                add_block_confirmation = input("Would you like to add the PSMP authentication block to the sshd_config file? (y/n): ")
-                if add_block_confirmation.lower() == "y" and backup_file(sshd_config_path):
-                    try:
-                        sleep(1)
-                        with open(sshd_config_path, "a") as file:
-                            # Append the PSMP Authentication Configuration Block
-                            file.write("\n# PSMP Authentication Configuration Block Start\n")
-                            file.write("Match Group PSMConnectUsers\n")
-                            file.write("  AuthenticationMethods publickey,keyboard-interactive keyboard-interactive\n")
-                            file.write("  AuthorizedKeysCommand /opt/CARKpsmp/bin/psshkeys_runner.sh\n")
-                            file.write("  AuthorizedKeysCommandUser root\n")
-                            file.write("Match Group All\n")
-                            file.write("# PSMP Authentication Configuration Block End\n")
-                        logging.info("PSMP authentication block added to sshd_config.\n")
-                        sleep(1)
-                        changes_made = True  # Mark that changes were made
-                    except Exception as e:
-                        logging.info(f"Error while appending the authentication block: {e}")
-                else:
-                    logging.info("PSMP authentication block was not added.")
-        else:
-            if not permit_empty_pass:
-                logging.info("PermitEmptyPasswords missing.")
-        if found_allow_user:
-            logging.info("AllowUser mentioned found.")
-        if not found_pubkey_accepted_algorithms:
-            logging.info("[!] SSH-Keys auth not enabled, sshd_config missing 'PubkeyAcceptedAlgorithms'.")
-        else:
-            logging.info("No misconfiguration found related to sshd_config.")
-
-        # If changes were made, ask the user to restart the sshd service
-        if changes_made:
-            restart_confirmation = input("Changes were made to the sshd_config. Would you like to restart the sshd service for the changes to take effect? (y/n): ")
-            if restart_confirmation.lower() == "y":
-                sleep(1)
-                try:
-                    subprocess.run(["systemctl", "restart", "sshd"], check=True)
-                    logging.info("[+] SSHD service restarted successfully.")
-                except subprocess.CalledProcessError as e:
-                    logging.info(f"Error while restarting sshd service: {e}")
-            else:
-                logging.info("Please restart the sshd service manually for the changes to take effect.")
         
-# Check the sshd_config file for misconfigurations related to PSMP
+# Check the sshd_config file for misconfigurations
 
 def check_sshd_config():
-    confirmation = input("\nPerform sshd configuration check? (y/n): ")
-    if confirmation.lower() == "y":
-        logging.info("SSHD Configuration Check:")
+        logging.info("\nSSHD Configuration Check:")
+        sleep(2)
         intergated_psmp = is_integrated(psmp_version)
         sshd_config_path = "/etc/ssh/sshd_config"
         found_pmsp_auth_block = False  # PSMP Authentication Configuration Block Start
@@ -537,7 +462,7 @@ def logs_collect():
     # Check sshd_config file elevated debug level
     if(not check_debug_level()):
         sys.exit(1)
-    sleep(1)   
+    sleep(2)   
 
     # Define folders to copy logs from
     log_folders = [
@@ -610,9 +535,9 @@ def check_debug_level():
     for i, line in enumerate(lines):
         if line.strip().startswith("LogLevel "):
             if line.strip() == f"LogLevel {desired_log_level}":
-                print("Correct SSHD LogLevel found in sshd_config")
+                print("[+] Correct SSHD LogLevel found in sshd_config")
             elif line.strip() == "LogLevel INFO":
-                confirmation = input("Would you like to elevate sshd LogLevel to DEBUG3? (y/n): ").strip().lower()
+                confirmation = input("The LogLevel for 'sshd' is not set to DEBUG3. Would you like to elevate it to DEBUG3? (y/n): ").strip().lower()
                 if confirmation == "y" and backup_file(ssh_config_path):
                     lines[i] = f"LogLevel {desired_log_level}\n"
                     changes_made = True
@@ -647,7 +572,7 @@ def check_debug_level():
             for line in file:
                 if trace_message in line:
                     trace_found = True
-                    print("Correct TraceLevels found in PSMPTrace.log.")
+                    print("[+] Correct TraceLevels found in PSMPTrace.log.")
                     break
         if not trace_found:
             # Note for the user
@@ -670,7 +595,7 @@ def generate_psmp_connection_string():
     print("More information: https://cyberark.my.site.com/s/article/PSM-for-SSH-Syntax-Cheat-Sheet")
     print("Please provide the following details to generate the connection string:\n")
     # Collect inputs from the user
-    print("MFA Caching requires FQDN of the Vault user.")
+    print("[!] MFA Caching requires FQDN of the Vault user.\n")
     vault_user = input("Enter vault user: ")
     target_user = input("Enter target user: ")
     target_user_domain = input("Enter target user domain address (leave empty if local): ")
@@ -691,7 +616,7 @@ def generate_psmp_connection_string():
     
     connection_string += f"@{psm_for_ssh_address}"
 
-    return "=> "+connection_string
+    return "The connection string is: "+connection_string
 
 def check_disk_space(threshold_percent=20):
     disk_usage = psutil.disk_usage('/')
@@ -780,7 +705,7 @@ def search_log_for_patterns():
 def hostname_check():
     hostname = socket.gethostname()
     # Check if the hostname includes 'localhost'
-    sleep(1)
+    sleep(2)
     if 'localhost' in hostname.lower():
         logging.info(f"\n[!] Hostname: '{hostname}' as default value, Change it to enique hostname to eliminate future issues.")
     return hostname
@@ -789,49 +714,47 @@ def hostname_check():
 def print_latest_selinux_prevention_lines():
     log_file_path = '/var/log/messages'
     search_string = "SELinux is preventing"
-    confirmation = input("\nDo you want to check SELinux? (y/n): ")
-    if confirmation.lower() != "n":
-        logging.info("\nChecking SELinux...")
-        sleep(1)
-        try:
-            # Run the 'sestatus' command to check SELinux status
-            result = subprocess.run(['sestatus'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
-            
-            # Print the output of 'sestatus' if SELinux is installed
-            logging.info("SELinux Status:")
-            logging.info(result.stdout)
-            
-        except subprocess.CalledProcessError:
-            logging.info("SELinux is not installed or not available on this system.")
-        except FileNotFoundError:
-            logging.info("The 'sestatus' command is not found. SELinux may not be installed.")
-        try:
-            # Use a deque to keep the latest 10 matching lines
-            latest_lines = deque(maxlen=10)
+    logging.info("\nChecking SELinux...")
+    sleep(2)
+    try:
+        # Run the 'sestatus' command to check SELinux status
+        result = subprocess.run(['sestatus'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
+        
+        # Print the output of 'sestatus' if SELinux is installed
+        logging.info("SELinux Status:")
+        logging.info(result.stdout)
+        
+    except subprocess.CalledProcessError:
+        logging.info("SELinux is not installed or not available on this system.")
+    except FileNotFoundError:
+        logging.info("The 'sestatus' command is not found. SELinux may not be installed.")
+    try:
+        # Use a deque to keep the latest 10 matching lines
+        latest_lines = deque(maxlen=10)
 
-            # Open the log file in read mode
-            with open(log_file_path, 'r') as log_file:
-                for line in log_file:
-                    # Check if the line contains the search string
-                    if search_string in line:
-                        # Add the line to the deque
-                        latest_lines.append(line.strip())
-            #No lines found
-            if len(latest_lines) > 0:
-                # Print each line in the deque on a new line
-                for line in latest_lines:
-                    # If the line is longer than 200 characters, truncate it to 200 characters
-                    if len(line) > 200:
-                        logging.info(line[:200] + "...")
-                    else:
-                        logging.info(line)
-            else:
-                logging.info("[+] SElinux is not preventing PSMP components.")
+        # Open the log file in read mode
+        with open(log_file_path, 'r') as log_file:
+            for line in log_file:
+                # Check if the line contains the search string
+                if search_string in line:
+                    # Add the line to the deque
+                    latest_lines.append(line.strip())
+        #No lines found
+        if len(latest_lines) > 0:
+            # Print each line in the deque on a new line
+            for line in latest_lines:
+                # If the line is longer than 200 characters, truncate it to 200 characters
+                if len(line) > 200:
+                    logging.info(line[:200] + "...")
+                else:
+                    logging.info(line)
+        else:
+            logging.info("[+] SElinux is not preventing PSMP components.")
 
-        except FileNotFoundError:
-            logging.info(f"Error: The file '{log_file_path}' does not exist.")
-        except PermissionError:
-            logging.info(f"Error: You do not have permission to access '{log_file_path}'.")
+    except FileNotFoundError:
+        logging.info(f"Error: The file '{log_file_path}' does not exist.")
+    except PermissionError:
+        logging.info(f"Error: You do not have permission to access '{log_file_path}'.")
 
 
 # Disable nscd service (if running, stop and disble)
@@ -848,7 +771,7 @@ def disable_nscd_service():
                 subprocess.run(["systemctl", "disable", "nscd"], check=True)
                 logging.info("NSCD Stopped and Disabled.")
         else:
-            logging.info("NSCD Service Is Not Running.")
+            logging.info("NSCD service is Not Running as expected.")
     except subprocess.CalledProcessError as e:
         logging.info(f"Error: {e}")
 
@@ -857,93 +780,97 @@ def disable_nscd_service():
 def verify_nsswitch_conf(psmp_version):
 
     nsswitch_path = "/etc/nsswitch.conf"
+    logging.info("\nnsswitch.conf Configuration Check:")
+    sleep(2)
+    try:
+        psmp_version = float(psmp_version)
+    except ValueError:
+        logging.info("Invalid PSMP version. Please provide a numeric version.")
+        return False
     
-    confirmation = input("\nPerform nsswitch.conf configuration check? (y/n): ")
-    if confirmation.lower() == "y":
-        logging.info("nsswitch.conf Configuration Check:")
-        sleep(1)
-        try:
-            psmp_version = float(psmp_version)
-        except ValueError:
-            logging.info("Invalid PSMP version. Please provide a numeric version.")
-            return False
+    # Define expected configurations based on PSMP version
+    expected_config_v12_2_or_newer = {
+        "passwd": "files psmp sss",
+        "shadow": "files sss",
+        "group": "files psmp sss",
+        "initgroups": "files psmp"
+    }
+
+    expected_config_older_than_v12_2 = {
+        "passwd": "files psmp sss",
+        "shadow": "files sss",
+        "group": "files psmp sss",
+        "initgroups": "files sss"  # Note that this is commented out in expected file
+    }
+    
+    # Choose expected config based on version
+    if psmp_version >= 12.2:
+        expected_config = expected_config_v12_2_or_newer
+    else:
+        expected_config = expected_config_older_than_v12_2
+
+    # Read the file content
+    try:
+        with open(nsswitch_path, "r") as f:
+            content = f.readlines()
+    except FileNotFoundError:
+        logging.info(f"{nsswitch_path} not found.")
+        return False
+
+    # Parse the file content
+    actual_config = {}
+    for line in content:
+        line = line.strip()
+        if line and not line.startswith("#"):  # Ignore empty lines and comments
+            key, *value = line.split(":")
+            actual_config[key.strip()] = value[0].strip() if value else ""
+
+    # Compare actual config with expected config
+    discrepancies = []
+    for key, expected_value in expected_config.items():
+        actual_value = actual_config.get(key)
+        if actual_value != expected_value:
+            discrepancies.append((key, actual_value, expected_value))
+
+    # If discrepancies are found, prompt for confirmation
+    if discrepancies:
+        logging.info("Discrepancies found in /etc/nsswitch.conf:")
+        for key, actual, expected in discrepancies:
+            logging.info(f" - {key}: found '{actual}', expected '{expected}'")
         
-        # Define expected configurations based on PSMP version
-        expected_config_v12_2_or_newer = {
-            "passwd": "files psmp sss",
-            "shadow": "files sss",
-            "group": "files psmp sss",
-            "initgroups": "files psmp"
-        }
+        confirmation = input("Would you like to update /etc/nsswitch.conf to the expected configuration? (y/n): ")
+        if confirmation.lower() == "y" and backup_file(nsswitch_path):
+            sleep(2)
+            # Update the file with the correct configuration
+            try:
+                with open(nsswitch_path, "w") as f:
+                    for line in content:
+                        key = line.split(":")[0].strip() if ":" in line else None
+                        if key in expected_config:
+                            f.write(f"{key}: {expected_config[key]}\n")
+                        else:
+                            f.write(line)
+                logging.info("The nsswitch.conf has been updated.")
+                logging.info("\n[!] Machine reboot is mandatory for the nsswitch.conf changes to take effect.")
+                sleep(3)
+                return True
 
-        expected_config_older_than_v12_2 = {
-            "passwd": "files psmp sss",
-            "shadow": "files sss",
-            "group": "files psmp sss",
-            "initgroups": "files sss"  # Note that this is commented out in expected file
-        }
-        
-        # Choose expected config based on version
-        if psmp_version >= 12.2:
-            expected_config = expected_config_v12_2_or_newer
+            except Exception as e:
+                logging.info(f"An error occurred while updating the file: {e}")
         else:
-            expected_config = expected_config_older_than_v12_2
-
-        # Read the file content
-        try:
-            with open(nsswitch_path, "r") as f:
-                content = f.readlines()
-        except FileNotFoundError:
-            logging.info(f"{nsswitch_path} not found.")
+            logging.info("No changes made to /etc/nsswitch.conf.")
             return False
-
-        # Parse the file content
-        actual_config = {}
-        for line in content:
-            line = line.strip()
-            if line and not line.startswith("#"):  # Ignore empty lines and comments
-                key, *value = line.split(":")
-                actual_config[key.strip()] = value[0].strip() if value else ""
-
-        # Compare actual config with expected config
-        discrepancies = []
-        for key, expected_value in expected_config.items():
-            actual_value = actual_config.get(key)
-            if actual_value != expected_value:
-                discrepancies.append((key, actual_value, expected_value))
-
-        # If discrepancies are found, prompt for confirmation
-        if discrepancies:
-            logging.info("Discrepancies found in /etc/nsswitch.conf:")
-            for key, actual, expected in discrepancies:
-                logging.info(f" - {key}: found '{actual}', expected '{expected}'")
-            
-            confirmation = input("Would you like to update /etc/nsswitch.conf to the expected configuration? (y/n): ")
-            if confirmation.lower() == "y" and backup_file(nsswitch_path):
-                sleep(1)
-                # Update the file with the correct configuration
-                try:
-                    with open(nsswitch_path, "w") as f:
-                        for line in content:
-                            key = line.split(":")[0].strip() if ":" in line else None
-                            if key in expected_config:
-                                f.write(f"{key}: {expected_config[key]}\n")
-                            else:
-                                f.write(line)
-                    logging.info("The nsswitch.conf has been updated.")
-                    logging.info("[!] Machine reboot is mandatory for the changes to take effect.")
-                    sys.exit(1)
-                except Exception as e:
-                    logging.info(f"An error occurred while updating the file: {e}")
-            else:
-                logging.info("No changes made to /etc/nsswitch.conf.")
-        else:
-            logging.info("nsswitch.conf is correctly configured.")
+    else:
+        logging.info("nsswitch.conf is correctly configured.")
+        return False
 
 # Automates the repair of the RPM for the specified PSMP version.
 
-def rpm_repair(psmp_version):
+import os
+import subprocess
+import logging
 
+def rpm_repair(psmp_version):
     logging.info(f"PSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
     logging.info("\nPSMP RPM Installation Repair:")
 
@@ -967,6 +894,12 @@ def rpm_repair(psmp_version):
         install_folder = os.path.dirname(rpm_location)
         logging.info(f"Installation folder found at: {install_folder}")
         
+        # Validate installation folder
+        install_folder_input = input(f"Is the installation folder {install_folder} correct? (y/n): ").strip().lower()
+        if install_folder_input != 'y':
+            logging.info("Installation folder not confirmed by user. Exiting.")
+            return
+
         # Step 2: Check and modify vault.ini file
         vault_ini_path = os.path.join(install_folder, "vault.ini")
         if os.path.exists(vault_ini_path):
@@ -1005,15 +938,13 @@ def rpm_repair(psmp_version):
             with open(psmpparms_sample_path, "r") as f:
                 psmpparms_content = f.readlines()
 
-            # Ask for Installation Folder confirmation
             logging.info("Found psmpparms.sample file.")
-            install_folder_input = input(f"Is the installation folder {install_folder} correct? (y/n): ").strip().lower()
-            if install_folder_input == 'y':
-                for i, line in enumerate(psmpparms_content):
-                    if line.startswith("InstallationFolder="):
-                        psmpparms_content[i] = f"InstallationFolder={install_folder}\n"
-                        break
-                logging.info(f"Installation folder updated to {install_folder} in psmpparms.")
+
+            for i, line in enumerate(psmpparms_content):
+                if line.startswith("InstallationFolder="):
+                    psmpparms_content[i] = f"InstallationFolder={install_folder}\n"
+                    break
+            logging.info(f"Installation folder updated to {install_folder} in psmpparms.")
 
             # Accept CyberArk EULA
             accept_eula = input("Do you accept the CyberArk EULA? (y/n): ").strip().lower()
@@ -1057,10 +988,10 @@ def rpm_repair(psmp_version):
                 os.chmod(create_cred_file_path, 0o755)  # Make it executable
                 logging.info("CreateCredFile executed. Please choose Yes on the Entropy file.")
             subprocess.run([create_cred_file_path, "user.cred"])
-            # Copy user.cred aand user.cred.entropy to installation folder
+            # Copy user.cred and user.cred.entropy to installation folder
             try:
-                    subprocess.run(["mv", "-f", "user.cred", "user.cred.entropy", install_folder], check=True)
-                    logging.info("user.cred and user.cred.entropy copied to installation folder.")
+                subprocess.run(["mv", "-f", "user.cred", "user.cred.entropy", install_folder], check=True)
+                logging.info("user.cred and user.cred.entropy copied to installation folder.")
             except FileNotFoundError:
                 logging.error("user.cred or user.cred.entropy file not found.")
             except Exception as e:
@@ -1076,7 +1007,6 @@ def rpm_repair(psmp_version):
 
     except subprocess.CalledProcessError:
         logging.info("Error during RPM file search or installation.")
-        # Do you wish to see the installation logs /var/tmp/psmp_install.log
         confirmation = input("Do you want to see the installation logs? (y/n): ")
         if confirmation.lower() == "y":
             try:
@@ -1087,6 +1017,7 @@ def rpm_repair(psmp_version):
                 logging.info("Installation log file not found.")
     except Exception as e:
         logging.info(f"An error occurred: {e}")
+
 
 
 if __name__ == "__main__":
@@ -1124,7 +1055,7 @@ if __name__ == "__main__":
 
     # Get the Linux distribution and version
     logging.info("\nPSMP Compatibility Check:")
-    sleep(1)
+    sleep(2)
     distro_name, distro_version = get_linux_distribution()
     # Check compatibility
     if is_supported(psmp_versions, psmp_version, distro_name, distro_version):
@@ -1146,11 +1077,11 @@ if __name__ == "__main__":
 
     # Check nsswitch configuration
     if is_integrated(psmp_version):
-        verify_nsswitch_conf(psmp_version)
+        nsswitch_changes=verify_nsswitch_conf(psmp_version)
 
     # Check system resources load.
     logging.info("\nChecking system resources load:")
-    sleep(1)
+    sleep(2)
     logging.info(check_disk_space()[1])
     logging.info(check_system_resources()[1])
 
@@ -1166,10 +1097,8 @@ if __name__ == "__main__":
         check_pam_d(distro_name)
 
     # Search for failed connection attempts in the secure log
-    confirmation = input("\nPerform search for patterns in secure logs? (y/n): ")
-    if confirmation == "y":
-        logging.info("\nSearching secure logs...")
-        sleep(1)
+        logging.info("\nSearching patterns in the secure logs...")
+        sleep(2)
         failed_attempts = search_secure_log(distro_name)
         if not failed_attempts:
             logging.info("No lines containing any of the patterns found.")
@@ -1178,20 +1107,18 @@ if __name__ == "__main__":
                 logging.info(attempt)
 
     # Search for patterns in the PSMPTrace.log file
-    confirmation = input("\nPerform search for patterns in PSMPTrace.log? (y/n): ")
-    if confirmation == "y":
-        logging.info("\nSearching PSMPTrace.log...")
-        sleep(1)
+        logging.info("\nSearching patterns in the PSMPTrace.log...")
+        sleep(2)
         search_log_for_patterns()
 
     # Check service status
     logging.info("\nServices Availability Check:")
-    sleep(1)
+    sleep(2)
     service_status = check_services_status()
     # Check if service status is Inactive
     if check_vault_comm(service_status):
         service_status = check_services_status()
-    sleep(1)
+    sleep(2)
     logging.info(f"PSMP Service Status: {service_status.get('psmpsrv', 'Unavailable')}")
     logging.info(f"SSHD Service Status: {service_status.get('sshd', 'Unavailable')}")
     
@@ -1200,4 +1127,5 @@ if __name__ == "__main__":
 
      # Offer the customer to repair the PSMP Installation RPM
     if service_status.get('psmpsrv', 'Unavailable') != "Running and communicating with Vault":
-        logging.info("\n[!] Recommended to proceed with a RPM installation repair, for repair automation execute 'python3 main.py repair'")
+        if not nsswitch_changes:
+            logging.info("\n[!] Recommended to proceed with a RPM installation repair, for repair automation execute 'python3 main.py repair'")
