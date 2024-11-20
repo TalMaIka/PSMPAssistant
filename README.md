@@ -17,14 +17,14 @@ Requirments are Python3.6+ and Python3-pip
 
 ## Usage
 
-To use the tool, run the `main.py` script with optional arguments.
+To use the tool, run the `PSMPChecker.py` script with optional arguments.
 
 ### Checking PSMP Compatibility and Configuration
 
 Run the script without any arguments to check the PSMP compatibility with the current system:
 
 ```bash
-python3 main.py
+python3 PSMPChecker.py
 ```
 <img src="https://i.postimg.cc/zf9GLpwM/123.png" alt="Tool landing page" style="width:92%;">
 
@@ -33,7 +33,7 @@ python3 main.py
 To collect logs from specified locations and create a zip file, use the `logs` argument:
 
 ```bash
-python3 main.py logs
+python3 PSMPChecker.py logs
 ```
 
 ### RPM Repair Automation
@@ -41,7 +41,7 @@ python3 main.py logs
 To execute the PSMP RPM repair process `repair` argument:
 
 ```bash
-python3 main.py repair
+python3 PSMPChecker.py repair
 ```
 
 ### Generating PSMP Connection String
@@ -49,7 +49,7 @@ python3 main.py repair
 To generate a PSMP connection string, use the `string` argument:
 
 ```bash
-python3 main.py string
+python3 PSMPChecker.py string
 ```
 
 ### Restoring SSHD Configuration
@@ -57,7 +57,7 @@ python3 main.py string
 To restore the SSHD configuration from a backup, use the `restore-sshd` argument:
 
 ```bash
-python3 main.py restore-sshd
+python3 PSMPChecker.py restore-sshd
 ```
 
 
