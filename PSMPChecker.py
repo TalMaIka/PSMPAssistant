@@ -954,6 +954,10 @@ def rpm_repair(psmp_version):
                         psmpparms_content[i] = "AcceptCyberArkEULA=Yes\n"
                         break
                 logging.info("CyberArk EULA accepted.")
+            else:
+                logging.info("CyberArk EULA not accepted.")
+                sleep(2)
+                sys.exit(1)
 
             # Update CreateVaultEnvironment and EnableADBridge
             skip_vault_env = input("Do you want to skip Vault environment creation? (y/n): ").strip().lower()
@@ -986,7 +990,7 @@ def rpm_repair(psmp_version):
             confirmation = input("Do you allow chmod 755 CreateCredFile (y/n):")
             if confirmation == "y":
                 os.chmod(create_cred_file_path, 0o755)  # Make it executable
-                logging.info("CreateCredFile executed. Please choose Yes on the Entropy file.")
+                logging.info("\nCreateCredFile executed. [!] Please choose Yes on the Entropy file.\n")
             subprocess.run([create_cred_file_path, "user.cred"])
             # Copy user.cred and user.cred.entropy to installation folder
             try:
