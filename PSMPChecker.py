@@ -18,7 +18,8 @@ from collections import deque
 import logging
 from datetime import datetime
 import signal
-
+import getpass
+import glob
 
 # Logging to write to the dynamically named file and the console
 
@@ -460,9 +461,18 @@ def check_sshd_config():
 def logs_collect():
     logging.info("PSMP Logs Collection:")
     # Check sshd_config file elevated debug level
-    if(not check_debug_level()):
+    if not check_debug_level():
         sys.exit(1)
-    sleep(2)   
+    sleep(2)
+
+    # Get the directory of the currently running script
+    script_directory = os.path.dirname(os.path.abspath(__file__))
+
+    # Define the pattern to match log files in the script's directory
+    log_file_pattern = os.path.join(script_directory, "PSMPChecker-*.log")
+
+    # Use glob to find all files matching the pattern
+    log_files_to_collect = glob.glob(log_file_pattern)
 
     # Define folders to copy logs from
     log_folders = [
@@ -470,46 +480,78 @@ def logs_collect():
         "/var/log/messages",
         "/var/opt/CARKpsmp/logs",
         "/etc/ssh/sshd_config",
+        "/etc/ssh/ssh_config",
+        "/etc/nsswitch.conf",
         "/etc/pam.d/sshd",
         "/etc/pam.d/password-auth",
         "/etc/pam.d/system-auth",
-        "/etc/nsswitch.conf",
+        "/var/tmp/psmp_install.log",
         "/var/opt/CARKpsmp/temp/EnvManager.log"
-    ]
+    ] + log_files_to_collect  # Add the PSMPChecker log files to the list
+
     print("\nThe logs will be collected from the following folders:\n")
     for folder in log_folders:
-        print(folder)
+        if "PSMPChecker-" not in folder:
+            print(folder)
     print("\nDocs Link https://docs.cyberark.com/pam-self-hosted/latest/en/Content/PAS%20INST/The-PSMP-Environment.htm")
-    print("\nDo you wish to continue? (y/n)")
+    print("Do you wish to continue? (y/n): ")
     choice = input().lower()
     if choice != 'y':
         print("Logs collection aborted.")
         return
-    
 
-    # Create a folder for temporary storage
-    temp_folder = "/tmp/psmp_logs"
-    os.makedirs(temp_folder, exist_ok=True)
+    # Create the PSMPChecker-Logs directory for storing the collected logs
+    psmp_logs_directory = os.path.join(script_directory, "PSMPChecker-Logs")
+    os.makedirs(psmp_logs_directory, exist_ok=True)
+
+    # Create directories for the different categories inside the PSMPChecker-Logs directory
+    os.makedirs(os.path.join(psmp_logs_directory, "OS"), exist_ok=True)
+    os.makedirs(os.path.join(psmp_logs_directory, "PAM.d"), exist_ok=True)
+    os.makedirs(os.path.join(psmp_logs_directory, "PSMP"), exist_ok=True)
+    os.makedirs(os.path.join(psmp_logs_directory, "PSMP/Installation"), exist_ok=True)
 
     try:
+        # Copy logs to respective directories based on category
         for folder in log_folders:
             if os.path.exists(folder):
                 if os.path.isdir(folder):
-                    shutil.copytree(folder, os.path.join(temp_folder, os.path.basename(folder)))
+                    # Copy entire directories inside respective categories
+                    if "secure" in folder or "messages" in folder or "sshd_config" in folder or "ssh_config" in folder or "nsswitch.conf" in folder:
+                        shutil.copytree(folder, os.path.join(psmp_logs_directory, "OS", os.path.basename(folder)))
+                    elif "sshd" in folder or "password-auth" in folder or "system-auth" in folder:
+                        shutil.copytree(folder, os.path.join(psmp_logs_directory, "PAM.d", os.path.basename(folder)))
+                    elif "CARKpsmp/logs" in folder:
+                        shutil.copytree(folder, os.path.join(psmp_logs_directory, "PSMP", os.path.basename(folder)))
+                    # Don't copy PSMPChecker logs to PSMP/Installation
+                    elif "psmp_install.log" in folder or "EnvManager.log" in folder:
+                        shutil.copy(folder, os.path.join(psmp_logs_directory, "PSMP/Installation", os.path.basename(folder)))
                 else:
-                    shutil.copy(folder, temp_folder)
+                    # Copy individual files into respective categories
+                    if "secure" in folder or "messages" in folder or "sshd_config" in folder or "ssh_config" in folder or "nsswitch.conf" in folder:
+                        shutil.copy(folder, os.path.join(psmp_logs_directory, "OS"))
+                    elif "sshd" in folder or "password-auth" in folder or "system-auth" in folder:
+                        shutil.copy(folder, os.path.join(psmp_logs_directory, "PAM.d"))
+                    elif "CARKpsmp/logs" in folder:
+                        shutil.copy(folder, os.path.join(psmp_logs_directory, "PSMP"))
+                    # Don't copy PSMPChecker logs to PSMP/Installation
+                    elif "psmp_install.log" in folder or "EnvManager.log" in folder:
+                        shutil.copy(folder, os.path.join(psmp_logs_directory, "PSMP/Installation"))
             else:
                 print(f"Folder not found: {folder}")
 
-        current_date = datetime.now().strftime("PSMPChecker-%m-%d-%y-%H:%M")
+        # Now, collect the PSMPChecker-*.log files directly into the PSMPChecker-Logs directory (outside of subdirectories)
+        for log_file in log_files_to_collect:
+            shutil.copy(log_file, psmp_logs_directory)
 
         # Create a zip file with the specified name format
-        zip_filename = f"PSMP_Logs_{current_date}.zip"
+        current_date = datetime.now().strftime("-%m-%d-%y-%H:%M")
+        zip_filename = f"PSMPChecker_Logs_{current_date}.zip"
         with zipfile.ZipFile(zip_filename, "w") as zipf:
-            for root, dirs, files in os.walk(temp_folder):
+            # Walk through the directory and add files to the zip with the appropriate paths
+            for root, dirs, files in os.walk(psmp_logs_directory):
                 for file in files:
                     file_path = os.path.join(root, file)
-                    zipf.write(file_path, os.path.relpath(file_path, temp_folder))
+                    zipf.write(file_path, os.path.relpath(file_path, psmp_logs_directory))
 
         print(f"Logs copied and zip file created: {zip_filename}")
 
@@ -517,9 +559,8 @@ def logs_collect():
         print(f"An error occurred: {e}")
 
     finally:
-        # Clean up temporary folder
-        shutil.rmtree(temp_folder, ignore_errors=True)
-
+        # Clean up the PSMPChecker-Logs directory (optional)
+        shutil.rmtree(psmp_logs_directory, ignore_errors=True)
 
 # Debug level verification on sshd_config and TraceLevel on PSMPTrace
 def check_debug_level():
@@ -876,7 +917,8 @@ def rpm_repair(psmp_version):
 
     # Step 1: Find the installation folder containing the RPM that matches the specified PSMP version
     find_cmd = "find / -type f -name 'CARK*.rpm'"
-    
+    logging.info(f"PSMP Version Detected: {psmp_version}")
+    sleep(2)
     try:
         logging.info("Searching for the RPM installation folder...")
         # Get all RPM file paths
@@ -961,12 +1003,14 @@ def rpm_repair(psmp_version):
 
             # Update CreateVaultEnvironment and EnableADBridge
             skip_vault_env = input("Do you want to skip Vault environment creation? (y/n): ").strip().lower()
-            if skip_vault_env == 'n':
+            if skip_vault_env == 'y':
                 for i, line in enumerate(psmpparms_content):
                     if line.startswith("#CreateVaultEnvironment="):
                         psmpparms_content[i] = "CreateVaultEnvironment=No\n"
                         break
                 logging.info("Vault environment creation set to No.")
+            else:
+                logging.info("Vault environment creation set to Yes.")
 
             disable_adbridge = input("Do you want to disable ADBridge? (y/n): ").strip().lower()
             if disable_adbridge == 'y':
@@ -975,6 +1019,8 @@ def rpm_repair(psmp_version):
                         psmpparms_content[i] = "EnableADBridge=No\n"
                         break
                 logging.info("ADBridge disabled.")
+            else:
+                logging.info("ADBridge set to Yes.")
 
             # Save changes to psmpparms.sample file
             with open("/var/tmp/psmpparms", "w") as f:
@@ -990,8 +1036,11 @@ def rpm_repair(psmp_version):
             confirmation = input("Do you allow chmod 755 CreateCredFile (y/n):")
             if confirmation == "y":
                 os.chmod(create_cred_file_path, 0o755)  # Make it executable
-                logging.info("\nCreateCredFile executed. [!] Please choose Yes on the Entropy file.\n")
-            subprocess.run([create_cred_file_path, "user.cred"])
+                logging.info("\nCreateCredFile executed.\n")
+                vaultAdmin = input("Vault Username [Administrator] ==> ")
+                logging.info(f"Vault Admin username: {vaultAdmin}")
+                vaultPass = getpass.getpass("Vault Password (will be encrypted in secret file) ==> ")
+            subprocess.run([create_cred_file_path, "user.cred", "Password", "-Username", vaultAdmin, "-Password", vaultPass, "-EntropyFile"])
             # Copy user.cred and user.cred.entropy to installation folder
             try:
                 subprocess.run(["mv", "-f", "user.cred", "user.cred.entropy", install_folder], check=True)
@@ -1054,7 +1103,6 @@ if __name__ == "__main__":
             sys.exit(1)
         elif arg == "repair":
             rpm_repair(psmp_version)
-            delete_file(log_filename)
             sys.exit(1)
 
     # Get the Linux distribution and version
