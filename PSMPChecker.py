@@ -921,10 +921,6 @@ def verify_nsswitch_conf(psmp_version):
 
 # Automates the repair of the RPM for the specified PSMP version.
 
-import os
-import subprocess
-import logging
-
 def rpm_repair(psmp_version):
     logging.info(f"PSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
     logging.info("\nPSMP RPM Installation Repair:")
@@ -944,19 +940,29 @@ def rpm_repair(psmp_version):
         if not matching_rpms:
             logging.info(f"No RPM file found matching version {psmp_version}. Please ensure the correct version is installed.")
             return  # No matching RPM found
-        
+
         # If there are multiple matches, select the first one (or apply more logic if needed)
         rpm_location = matching_rpms[0]
         install_folder = os.path.dirname(rpm_location)
         logging.info(f"Installation folder found at: {install_folder}")
-        
+
         # Validate installation folder
         install_folder_input = input(f"Is the installation folder {install_folder} correct? (y/n): ").strip().lower()
         if install_folder_input != 'y':
             logging.info("Installation folder not confirmed by user. Exiting.")
             return
 
-        # Step 2: Check and modify vault.ini file
+        # Step 2: Repair additional RPM for versions 13.2 and below
+        if float(psmp_version) <= 13.2:
+            integrated_mode_rpm = os.path.join(install_folder, "IntegratedMode", f"CARKpsmp-infra-{psmp_version}.x86_64.rpm")
+            if os.path.exists(integrated_mode_rpm):
+                logging.info(f"Repairing additional RPM for PSMP version {psmp_version} from: {integrated_mode_rpm}")
+                subprocess.run(["rpm", "-Uvh", "--force", integrated_mode_rpm])
+                logging.info(f"Additional RPM {integrated_mode_rpm} repaired successfully.")
+            else:
+                logging.info(f"Additional RPM not found in {os.path.join(install_folder, 'IntegratedMode')}. Please ensure it is available.")
+
+        # Step 3: Check and modify vault.ini file
         vault_ini_path = os.path.join(install_folder, "vault.ini")
         if os.path.exists(vault_ini_path):
             with open(vault_ini_path, "r") as f:
@@ -988,7 +994,7 @@ def rpm_repair(psmp_version):
         else:
             logging.info(f"vault.ini not found in {install_folder}")
 
-        # Step 3: Modify psmpparms.sample file based on user input
+        # Step 4: Modify psmpparms.sample file based on user input
         psmpparms_sample_path = os.path.join(install_folder, "psmpparms.sample")
         if os.path.exists(psmpparms_sample_path):
             with open(psmpparms_sample_path, "r") as f:
@@ -1044,7 +1050,7 @@ def rpm_repair(psmp_version):
         else:
             logging.info(f"psmpparms.sample not found in {install_folder}")
 
-        # Step 4: Execute CreateCredFile and follow instructions
+        # Step 5: Execute CreateCredFile and follow instructions
         create_cred_file_path = os.path.join(install_folder, "CreateCredFile")
         if os.path.exists(create_cred_file_path):
             confirmation = input("Do you allow chmod 755 CreateCredFile (y/n):")
@@ -1066,7 +1072,7 @@ def rpm_repair(psmp_version):
         else:
             logging.info(f"CreateCredFile not found in {install_folder}")
 
-        # Step 5: Install the RPM
+        # Step 6: Install the RPM
         rpm_file_path = os.path.join(install_folder, matching_rpms[0])
         logging.info(f"Installing RPM from: {rpm_file_path}")
         subprocess.run(["rpm", "-Uvh", "--force", rpm_file_path])
@@ -1084,6 +1090,7 @@ def rpm_repair(psmp_version):
                 logging.info("Installation log file not found.")
     except Exception as e:
         logging.info(f"An error occurred: {e}")
+
 
 
 
