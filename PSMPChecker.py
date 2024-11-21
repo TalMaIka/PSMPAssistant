@@ -77,16 +77,50 @@ def load_psmp_versions_json(file_path):
 
 def get_installed_psmp_version():
     try:
+        # Run the command to list installed RPMs related to CARK
         result = subprocess.check_output("rpm -qa | grep -i cark", shell=True, universal_newlines=True).strip()
+        
         if result:
-            # Extract version number, assuming the result format is "CARKpsmp-14.0.0-14.x86_64"
-            version = result.split('-')[1]
-            # Extract major and minor version numbers
-            major, minor, _ = version.split('.', 2)
-            main_version = f"{major}.{minor}"
-            return main_version
-    except subprocess.CalledProcessError:
+            # Split the output into lines for multiple RPMs
+            lines = result.splitlines()
+            for line in lines:
+                # Skip lines containing "infra"
+                if "infra" in line.lower():
+                    continue
+                
+                # Extract the version part after the first '-'
+                parts = line.split('-')
+                if len(parts) > 1:
+                    version = parts[1]
+                    
+                    # Extract major and minor version numbers
+                    try:
+                        major, minor, *_ = version.split('.')
+                        main_version = f"{major}.{minor}"
+                        
+                        # Map specific version formats as needed
+                        if main_version == "12.06":
+                            main_version = "12.6"
+                        elif main_version == "12.02":
+                            main_version = "12.2"
+                        
+                        return main_version
+                    except ValueError:
+                        # Log if version parsing fails
+                        logging.warning(f"Unable to parse version from: {version}")
+        
+        # Return None if no valid version is found
         return None
+    
+    except subprocess.CalledProcessError:
+        # Log and return None if the command fails
+        logging.error("Failed to execute RPM query command.")
+        return None
+    except Exception as e:
+        # Log unexpected errors
+        logging.error(f"An error occurred: {e}")
+        return None
+
 
 # Get the Linux distribution and version
 
@@ -265,6 +299,8 @@ def check_vault_comm(service_status):
             if restart_confirmation.lower() == "y":
                 logging.info("[+] Restarting PSMP service...")
                 try:
+                    subprocess.run(["systemctl", "restart", "psmpsrv"], check=True)
+                    sleep(15)
                     service_status = check_services_status()
                     if service_status["psmpsrv"] == "[-] Inactive" or service_status["psmpsrv"] == "[-] Running but not communicating with Vault":
                         logging.info("[-] PSMP service issue.")
@@ -935,7 +971,7 @@ def rpm_repair(psmp_version):
         rpm_files = subprocess.check_output(find_cmd, shell=True, universal_newlines=True).splitlines()
 
         # Filter RPM files by PSMP version in the file name
-        matching_rpms = [rpm for rpm in rpm_files if psmp_version in rpm]
+        matching_rpms = [rpm for rpm in rpm_files if psmp_version and "infra" not in rpm]
 
         if not matching_rpms:
             logging.info(f"No RPM file found matching version {psmp_version}. Please ensure the correct version is installed.")
@@ -951,17 +987,7 @@ def rpm_repair(psmp_version):
         if install_folder_input != 'y':
             logging.info("Installation folder not confirmed by user. Exiting.")
             return
-
-        # Step 2: Repair additional RPM for versions 13.2 and below
-        if float(psmp_version) <= 13.2:
-            integrated_mode_rpm = os.path.join(install_folder, "IntegratedMode", f"CARKpsmp-infra-{psmp_version}.x86_64.rpm")
-            if os.path.exists(integrated_mode_rpm):
-                logging.info(f"Repairing additional RPM for PSMP version {psmp_version} from: {integrated_mode_rpm}")
-                subprocess.run(["rpm", "-Uvh", "--force", integrated_mode_rpm])
-                logging.info(f"Additional RPM {integrated_mode_rpm} repaired successfully.")
-            else:
-                logging.info(f"Additional RPM not found in {os.path.join(install_folder, 'IntegratedMode')}. Please ensure it is available.")
-
+        
         # Step 3: Check and modify vault.ini file
         vault_ini_path = os.path.join(install_folder, "vault.ini")
         if os.path.exists(vault_ini_path):
@@ -1064,30 +1090,47 @@ def rpm_repair(psmp_version):
             # Copy user.cred and user.cred.entropy to installation folder
             try:
                 subprocess.run(["mv", "-f", "user.cred", "user.cred.entropy", install_folder], check=True)
-                logging.info("user.cred and user.cred.entropy copied to installation folder.")
+                logging.info("\nuser.cred and user.cred.entropy copied to installation folder.")
             except FileNotFoundError:
-                logging.error("user.cred or user.cred.entropy file not found.")
+                logging.error("\nuser.cred or user.cred.entropy file not found.")
             except Exception as e:
                 logging.error(f"Error: {e}")
         else:
-            logging.info(f"CreateCredFile not found in {install_folder}")
+            logging.info(f"\nCreateCredFile not found in {install_folder}")
 
-        # Step 6: Install the RPM
-        rpm_file_path = os.path.join(install_folder, matching_rpms[0])
-        logging.info(f"Installing RPM from: {rpm_file_path}")
-        subprocess.run(["rpm", "-Uvh", "--force", rpm_file_path])
-        logging.info(f"RPM {rpm_file_path} installed successfully.")
-
-    except subprocess.CalledProcessError:
-        logging.info("Error during RPM file search or installation.")
-        confirmation = input("Do you want to see the installation logs? (y/n): ")
-        if confirmation.lower() == "y":
-            try:
-                with open("/var/tmp/psmp_install.log", "r") as f:
-                    for line in f:
-                        logging.info(line.strip())
-            except FileNotFoundError:
-                logging.info("Installation log file not found.")
+        # Step 5: Install the RPM
+        try:
+            if is_integrated(psmp_version) and float(psmp_version) <= 13.2:
+                integrated_rpm_dir = os.path.join(install_folder, "IntegratedMode")
+                integrated_rpm_files = [
+                    os.path.join(integrated_rpm_dir, rpm)
+                    for rpm in os.listdir(integrated_rpm_dir)
+                    if rpm.endswith(".rpm")
+                ]
+                
+                if not integrated_rpm_files:
+                    logging.warning("No IntegratedMode RPM file found.")
+                else:
+                    integrated_rpm_path = integrated_rpm_files[0]  # Repair the first RPM found
+                    logging.info(f"\nRepairing IntegratedMode RPM from: {integrated_rpm_path}")
+                    subprocess.run(["rpm", "-Uvh", "--force", integrated_rpm_path])
+                    logging.info(f"\n[+] IntegratedMode RPM {integrated_rpm_path} installed successfully.")
+            
+            # Proceed with the main RPM repair
+            rpm_file_path = os.path.join(install_folder, matching_rpms[0])
+            logging.info(f"\nRepairing main RPM from: {rpm_file_path}")
+            subprocess.run(["rpm", "-Uvh", "--force", rpm_file_path])
+            logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
+        except subprocess.CalledProcessError:
+            logging.error("\n[-] Error during RPM file search or installation.")
+            confirmation = input("Do you want to see the installation logs? (y/n): ")
+            if confirmation.lower() == "y":
+                try:
+                    with open("/var/tmp/psmp_install.log", "r") as f:
+                        for line in f:
+                            logging.info(line.strip())
+                except FileNotFoundError:
+                    logging.info("Installation log file not found.")
     except Exception as e:
         logging.info(f"An error occurred: {e}")
 
