@@ -31,6 +31,13 @@ logging.basicConfig(
     ]
 )
 
+#Verifing privileged user
+def check_privileges():
+    if os.geteuid() != 0:
+        print("\n[!] PSMPChecker tool must be run as root!")
+        sleep(2)
+        sys.exit(1)
+
 # Define the signal handler
 def handle_signal(signal, frame):
     print("\n\nTerminating tool...") 
@@ -1232,6 +1239,8 @@ if __name__ == "__main__":
 
     # Print the PSMPChecker logo
     print_logo()
+    #Verifing privileged user
+    check_privileges()
 
     # Load PSMP versions from a JSON file
     psmp_versions = load_psmp_versions_json('src/versions.json')
@@ -1256,6 +1265,7 @@ if __name__ == "__main__":
             delete_file(log_filename)
             sys.exit(1)
         elif arg == "repair":
+            log_filename = datetime.now().strftime("PSMPChecker-Repair-%m-%d-%y-%H:%M.log")
             rpm_repair(psmp_version)
             sys.exit(1)
 
