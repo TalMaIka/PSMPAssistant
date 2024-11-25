@@ -11,7 +11,6 @@ import shutil
 import datetime
 import zipfile
 import sys
-import psutil
 import socket
 from time import sleep
 from collections import deque
@@ -125,12 +124,59 @@ def get_installed_psmp_version():
 # Get the Linux distribution and version
 
 def get_linux_distribution():
-    version_info = distro.version(best=True)
-    version_parts = version_info.split('.')
-    major = version_parts[0]
-    minor = version_parts[1] if len(version_parts) > 1 else '0'
-    main_version = f"{major}.{minor}"
-    return distro.name(), main_version
+    try:
+        # Check CentOS or Red Hat release files
+        for release_file in ["/etc/centos-release", "/etc/redhat-release"]:
+            try:
+                with open(release_file, "r") as f:
+                    content = f.read().strip()
+                    if content:
+                        # Remove "Core" if present and extract major.minor version
+                        content = content.replace("Core", "").strip()
+                        version_parts = content.split("release")[1].strip().split(" ")
+                        # Extract only major.minor version (e.g., 7.9 from 7.9.2009)
+                        major_minor_version = version_parts[0].split(".")[:2]
+                        # Format the output for CentOS and RHEL
+                        if "CentOS" in content:
+                            return "CentOS Linux", '.'.join(major_minor_version)
+                        elif "Red Hat" in content:
+                            return "Red Hat Enterprise Linux", '.'.join(major_minor_version)
+            except FileNotFoundError:
+                continue
+
+        # Parse /etc/os-release as fallback
+        try:
+            with open("/etc/os-release", "r") as f:
+                distro_info = {}
+                for line in f:
+                    key, _, value = line.partition("=")
+                    distro_info[key.strip()] = value.strip().strip('"')
+                distro_name = distro_info.get("NAME", "Unknown")
+                distro_version = distro_info.get("VERSION_ID", "Unknown")
+                # Ensure the return format is the same
+                return distro_name, distro_version
+        except FileNotFoundError:
+            pass
+
+        # Use uname as a last resort
+        try:
+            uname_result = subprocess.run(
+                ["uname", "-r"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True
+            )
+            if uname_result.returncode == 0:
+                return "Linux Kernel", uname_result.stdout.strip()
+        except Exception:
+            pass
+
+        # If all else fails
+        return "Unknown Linux Distribution", "Unknown"
+
+    except Exception as e:
+        return f"Error determining Linux distribution: {e}"
+
 
 # Check if the PSMP version is supported for the given Linux distribution and version
 
@@ -709,20 +755,51 @@ def generate_psmp_connection_string():
 
     return "The connection string is: "+connection_string
 
-def check_disk_space(threshold_percent=20):
-    disk_usage = psutil.disk_usage('/')
-    if disk_usage.percent > (100 - threshold_percent):
-        return False, f"[-] Low disk space: {disk_usage.percent}% used."
-    return True, "Disk space is sufficient."
+# Checking system resources
 
-def check_system_resources(threshold_cpu=80, threshold_memory=80):
-    cpu_usage = psutil.cpu_percent()
-    memory_usage = psutil.virtual_memory().percent
-    if cpu_usage > threshold_cpu:
-        return False, f"[-] High CPU usage: {cpu_usage}%"
-    if memory_usage > threshold_memory:
-        return False, f"[-] High Memory usage: {memory_usage}%"
-    return True, "System resources are within normal limits."
+def check_system_resources():
+    try:
+        # Get CPU Load
+        cpu_result = subprocess.run(["cat", "/proc/loadavg"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        if cpu_result.returncode == 0:
+            load_avg = float(cpu_result.stdout.split()[0])  # 1-minute load average
+            # Get the number of CPU cores
+            with open("/proc/cpuinfo") as f:
+                cores = sum(1 for line in f if line.startswith("processor"))
+            if cores > 0:
+                load_percentage = ((load_avg / cores) * 100) % 100
+                if load_percentage > 100:
+                    cpu_info = f"High CPU Load: {load_percentage:.2f}% (Overloaded)"
+                else:
+                    cpu_info = f"CPU Load within the normal limits."
+            else:
+                cpu_info = "Unable to determine CPU core count."
+        else:
+            cpu_info = f"Error retrieving CPU load: {cpu_result.stderr.strip()}"
+
+        # Get Disk Space
+        disk_result = subprocess.run(["df", "-h"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        if disk_result.returncode == 0:
+            disk_lines = disk_result.stdout.strip().split("\n")[1:]  # Skip the header line
+            high_usage_partitions = []
+            for line in disk_lines:
+                parts = line.split()
+                if len(parts) >= 5:  # Ensure the line has enough parts
+                    usage_percent = int(parts[4][:-1])  # Strip the '%' from the 'Use%' value
+                    if usage_percent > 85:  # Check if usage is more than 85%
+                        high_usage_partitions.append(f"{parts[0]}: {usage_percent}% used (Mounted on {parts[5]})")
+            if high_usage_partitions:
+                disk_info = "High Disk Usage:\n" + "\n".join(high_usage_partitions)
+            else:
+                disk_info = "Sufficient disk space."
+        else:
+            disk_info = f"Error retrieving disk space: {disk_result.stderr.strip()}"
+
+        # Combine Results
+        return f"{cpu_info}\n{disk_info}"
+    
+    except Exception as e:
+        return f"Error retrieving system status: {e}"
 
 # Search the secure log file for known patterns
 
@@ -1198,8 +1275,7 @@ if __name__ == "__main__":
     # Check system resources load.
     logging.info("\nChecking system resources load:")
     sleep(2)
-    logging.info(check_disk_space()[1])
-    logging.info(check_system_resources()[1])
+    logging.info(check_system_resources())
 
     # Check SSHD configuration
     check_sshd_config()
