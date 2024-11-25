@@ -541,6 +541,7 @@ def check_sshd_config():
 def logs_collect():
     logging.info("PSMP Logs Collection:")
     # Check sshd_config file elevated debug level
+    delete_file(log_filename)
     if not check_debug_level():
         sys.exit(1)
     sleep(2)
@@ -1233,7 +1234,6 @@ if __name__ == "__main__":
     for arg in sys.argv:
         if arg == "logs":
             logs_collect()
-            delete_file(log_filename)
             sys.exit(1)
         elif arg == "restore-sshd":
             restore_sshd_config_from_backup()
