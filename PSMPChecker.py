@@ -219,7 +219,7 @@ def is_integrated(psmp_version):
             return False
 
         # Check if the PSMP version is 13.2 or higher
-        if major > 13 or (major == 13 and minor >= 2):
+        if float(psmp_version) > 13.2:
             return True
 
         # Search for the required packages in the installed RPMs
@@ -1037,20 +1037,21 @@ def verify_nsswitch_conf(psmp_version):
 # Automates the repair of the RPM for the specified PSMP version.
 
 def rpm_repair(psmp_version):
-    logging.info(f"PSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
+    logging.info(f"\nPSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
     logging.info("\nPSMP RPM Installation Repair:")
 
-    # Step 1: Find the installation folder containing the RPM that matches the specified PSMP version
-    find_cmd = "find / -type f -name 'CARK*.rpm'"
     logging.info(f"PSMP Version Detected: {psmp_version}")
     sleep(2)
     try:
-        logging.info("Searching for the RPM installation folder...")
-        # Get all RPM file paths
-        rpm_files = subprocess.check_output(find_cmd, shell=True, universal_newlines=True).splitlines()
+        # Step 1: Manually search the entire file system for RPM files
+        rpm_files = []
+        for root, dirs, files in os.walk('/'):
+            for file in files:
+                if file.startswith('CARK') and file.endswith('.rpm'):
+                    rpm_files.append(os.path.join(root, file))
 
         # Filter RPM files by PSMP version in the file name
-        matching_rpms = [rpm for rpm in rpm_files if psmp_version and "infra" not in rpm]
+        matching_rpms = [rpm for rpm in rpm_files if psmp_version in rpm and "infra" not in rpm]
 
         if not matching_rpms:
             logging.info(f"No RPM file found matching version {psmp_version}. Please ensure the correct version is installed.")
@@ -1066,7 +1067,7 @@ def rpm_repair(psmp_version):
         if install_folder_input != 'y':
             logging.info("Installation folder not confirmed by user. Exiting.")
             return
-        
+
         # Step 3: Check and modify vault.ini file
         vault_ini_path = os.path.join(install_folder, "vault.ini")
         if os.path.exists(vault_ini_path):
@@ -1136,6 +1137,17 @@ def rpm_repair(psmp_version):
                 logging.info("Vault environment creation set to No.")
             else:
                 logging.info("Vault environment creation set to Yes.")
+
+            # Update Integration state
+            for i, line in enumerate(psmpparms_content):
+                if line.lower().startswith("installcyberarksshd="):
+                    if is_integrated(psmp_version):
+                        psmpparms_content[i] = "InstallCyberArkSSHD=Integrated\n"
+                        logging.info("PSMP set to integrated.")
+                    else:
+                        psmpparms_content[i] = "InstallCyberArkSSHD=Yes\n"
+                        logging.info("PSMP set to non-integrated.")
+                    break
 
             disable_adbridge = input("Do you want to disable ADBridge? (y/n): ").strip().lower()
             if disable_adbridge == 'y':
@@ -1207,12 +1219,12 @@ def rpm_repair(psmp_version):
                 try:
                     with open("/var/tmp/psmp_install.log", "r") as f:
                         for line in f:
-                            logging.info(line.strip())
-                except FileNotFoundError:
-                    logging.info("Installation log file not found.")
-    except Exception as e:
-        logging.info(f"An error occurred: {e}")
+                            print(line.strip())
+                except Exception as e:
+                    logging.error(f"Could not read log file: {e}")
 
+    except Exception as e:
+        logging.error(f"An error occurred during the RPM repair process: {e}")
 
 
 
