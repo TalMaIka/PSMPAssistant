@@ -4,7 +4,6 @@
 
 import json
 import subprocess
-import distro
 import re
 import os
 import shutil
@@ -63,7 +62,6 @@ def print_logo():
 |__|  |_____|_|_|_|__|      |_____|_|_|___|___|_,_|___|_|  
       © 2024 CyberArk Community, Made By Tal.M"""
     logging.info(logo)
-    logging.info("\n")
 
 
 # Load PSMP versions from a JSON file
@@ -968,10 +966,13 @@ def verify_nsswitch_conf(psmp_version):
         "passwd": "files psmp sss",
         "shadow": "files sss",
         "group": "files psmp sss",
-        "initgroups": "files sss"  # Note that this is commented out in expected file
+        "initgroups": "files sss" 
     }
     
     # Choose expected config based on version
+    if psmp_version > 13.0:
+            logging.info("nsswitch.conf is correctly configured.")
+            return False
     if psmp_version >= 12.2:
         expected_config = expected_config_v12_2_or_newer
     else:
