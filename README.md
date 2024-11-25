@@ -6,8 +6,6 @@ A Python-based tool designed to verify the installation and compatibility of Pri
 
 ## Installation
 
-To install the dependencies required for this tool, you can use pip and the provided `requirements.txt` file. Make sure you have Python and pip installed on your system. Then, follow these steps:
-
 ```bash
 git clone https://github.com/TalMaIka/PSMPChecker.git
 cd PSMPChecker
