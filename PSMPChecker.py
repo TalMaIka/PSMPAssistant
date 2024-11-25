@@ -1174,7 +1174,7 @@ def rpm_repair(psmp_version):
             if confirmation == "y":
                 os.chmod(create_cred_file_path, 0o755)  # Make it executable
                 logging.info("\nCreateCredFile executed.\n")
-                vaultAdmin = input("Vault Username [Administrator] ==> ")
+                vaultAdmin = input("Vault Username ==> ")
                 logging.info(f"Vault Admin username: {vaultAdmin}")
                 vaultPass = getpass.getpass("Vault Password (will be encrypted in secret file) ==> ")
             subprocess.run([create_cred_file_path, "user.cred", "Password", "-Username", vaultAdmin, "-Password", vaultPass, "-EntropyFile"])
