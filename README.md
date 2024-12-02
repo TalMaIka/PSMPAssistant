@@ -41,6 +41,14 @@ To execute the PSMP RPM repair process `repair` argument:
 python3 PSMPChecker.py repair
 ```
 
+### RPM Install Automation
+
+To execute the PSMP RPM repair process `install` argument:
+
+```bash
+python3 PSMPChecker.py install
+```
+
 ### Generating PSMP Connection String
 
 To generate a PSMP connection string, use the `string` argument:
@@ -78,10 +86,6 @@ python3 PSMPChecker.py restore-sshd
 ### System Resource Check
 - Monitors CPU and memory usage to ensure they are within acceptable limits and verifies if there is sufficient disk space.
  + https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20sysreq/system%20requirements%20-%20psmp.htm
-
-### PAM Configuration Check
-- Validates the PAM configuration for certain Linux distributions.
- + https://community.cyberark.com/s/article/00004683
 
 ### NSswitch Configuration Check
 - Validates the NSswitch configuration based on PSMP version.
