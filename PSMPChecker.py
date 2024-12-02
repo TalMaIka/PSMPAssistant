@@ -548,8 +548,12 @@ def logs_collect():
         "/etc/pam.d/password-auth",
         "/etc/pam.d/system-auth",
         "/var/tmp/psmp_install.log",
-        "/var/opt/CARKpsmp/temp/EnvManager.log"
-    ] + log_files_to_collect  # Add the PSMPChecker log files to the list
+        "/var/opt/CARKpsmp/temp/EnvManager.log",
+        "/etc/opt/CARKpsmp/conf/basic_psmpserver.conf",
+        "/etc/opt/CARKpsmpadb/conf/basic_psmpadbridge.conf",
+        "/var/opt/CARKpsmp/temp/PVConfiguration.xml",
+        "/var/opt/CARKpsmp/temp/Policies.xml"
+    ] + log_files_to_collect
 
     print("\nThe logs will be collected from the following folders:\n")
     for folder in log_folders:
@@ -571,6 +575,8 @@ def logs_collect():
     os.makedirs(os.path.join(psmp_logs_directory, "PAM.d"), exist_ok=True)
     os.makedirs(os.path.join(psmp_logs_directory, "PSMP"), exist_ok=True)
     os.makedirs(os.path.join(psmp_logs_directory, "PSMP/Installation"), exist_ok=True)
+    os.makedirs(os.path.join(psmp_logs_directory, "PSMP/Conf"), exist_ok=True)
+    os.makedirs(os.path.join(psmp_logs_directory, "PSMP/Temp"), exist_ok=True)
 
     try:
         # Copy logs to respective directories based on category
@@ -584,7 +590,6 @@ def logs_collect():
                         shutil.copytree(folder, os.path.join(psmp_logs_directory, "PAM.d", os.path.basename(folder)))
                     elif "CARKpsmp/logs" in folder:
                         shutil.copytree(folder, os.path.join(psmp_logs_directory, "PSMP", os.path.basename(folder)))
-                    # Don't copy PSMPChecker logs to PSMP/Installation
                     elif "psmp_install.log" in folder or "EnvManager.log" in folder:
                         shutil.copy(folder, os.path.join(psmp_logs_directory, "PSMP/Installation", os.path.basename(folder)))
                 else:
@@ -595,11 +600,12 @@ def logs_collect():
                         shutil.copy(folder, os.path.join(psmp_logs_directory, "PAM.d"))
                     elif "CARKpsmp/logs" in folder:
                         shutil.copy(folder, os.path.join(psmp_logs_directory, "PSMP"))
-                    # Don't copy PSMPChecker logs to PSMP/Installation
                     elif "psmp_install.log" in folder or "EnvManager.log" in folder:
                         shutil.copy(folder, os.path.join(psmp_logs_directory, "PSMP/Installation"))
-            else:
-                print(f"Folder not found: {folder}")
+                    elif "basic_psmpserver.conf" in folder or "basic_psmpadbridge.conf" in folder:
+                        shutil.copy(folder, os.path.join(psmp_logs_directory, "PSMP/Conf", os.path.basename(folder)))
+                    elif "PVConfiguration.xml" in folder or "Policies.xml" in folder:
+                        shutil.copy(folder, os.path.join(psmp_logs_directory, "PSMP/Temp", os.path.basename(folder)))
 
         # Now, collect the PSMPChecker-*.log files directly into the PSMPChecker-Logs directory (outside of subdirectories)
         for log_file in log_files_to_collect:
