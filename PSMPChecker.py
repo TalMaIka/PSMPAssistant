@@ -519,6 +519,18 @@ def check_sshd_config():
 
 # Collect PSMP machine logs and creating a zip file
 
+def truncate_logs(file_path, max_lines=1500):
+    """Truncates the log file to the last 'max_lines' lines and returns the content."""
+    try:
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+            if len(lines) > max_lines:
+                lines = lines[-max_lines:]  # Keep only the last 'max_lines' lines
+            return ''.join(lines)
+    except Exception as e:
+        logging.error(f"Error truncating {file_path}: {e}")
+        return None
+
 def logs_collect():
     logging.info("PSMP Logs Collection:")
     # Check sshd_config file elevated debug level
@@ -579,13 +591,21 @@ def logs_collect():
     os.makedirs(os.path.join(psmp_logs_directory, "PSMP/Temp"), exist_ok=True)
 
     try:
-        # Copy logs to respective directories based on category
+        # Collect logs and copy to respective directories
         for folder in log_folders:
             if os.path.exists(folder):
                 if os.path.isdir(folder):
                     # Copy entire directories inside respective categories
                     if "secure" in folder or "messages" in folder or "sshd_config" in folder or "ssh_config" in folder or "nsswitch.conf" in folder:
-                        shutil.copytree(folder, os.path.join(psmp_logs_directory, "OS", os.path.basename(folder)))
+                        # Truncate and copy the last 1500 lines of secure and messages logs
+                        if folder == "/var/log/secure" or folder == "/var/log/messages":
+                            truncated_content = truncate_logs(folder)
+                            if truncated_content:
+                                truncated_file_path = os.path.join(psmp_logs_directory, "OS", os.path.basename(folder))
+                                with open(truncated_file_path, 'w') as f:
+                                    f.write(truncated_content)
+                        else:
+                            shutil.copytree(folder, os.path.join(psmp_logs_directory, "OS", os.path.basename(folder)))
                     elif "sshd" in folder or "password-auth" in folder or "system-auth" in folder:
                         shutil.copytree(folder, os.path.join(psmp_logs_directory, "PAM.d", os.path.basename(folder)))
                     elif "CARKpsmp/logs" in folder:
@@ -595,7 +615,15 @@ def logs_collect():
                 else:
                     # Copy individual files into respective categories
                     if "secure" in folder or "messages" in folder or "sshd_config" in folder or "ssh_config" in folder or "nsswitch.conf" in folder:
-                        shutil.copy(folder, os.path.join(psmp_logs_directory, "OS"))
+                        # Truncate and copy the last 1500 lines of secure and messages logs
+                        if folder == "/var/log/secure" or folder == "/var/log/messages":
+                            truncated_content = truncate_logs(folder)
+                            if truncated_content:
+                                truncated_file_path = os.path.join(psmp_logs_directory, "OS", os.path.basename(folder))
+                                with open(truncated_file_path, 'w') as f:
+                                    f.write(truncated_content)
+                        else:
+                            shutil.copy(folder, os.path.join(psmp_logs_directory, "OS"))
                     elif "sshd" in folder or "password-auth" in folder or "system-auth" in folder:
                         shutil.copy(folder, os.path.join(psmp_logs_directory, "PAM.d"))
                     elif "CARKpsmp/logs" in folder:
@@ -630,6 +658,7 @@ def logs_collect():
         # Clean up the PSMPChecker-Logs directory (optional)
         shutil.rmtree(psmp_logs_directory, ignore_errors=True)
 
+        
 # Debug level verification on sshd_config and TraceLevel on PSMPTrace
 def check_debug_level():
     ssh_config_path = "/etc/ssh/sshd_config"
