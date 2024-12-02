@@ -396,37 +396,6 @@ def check_openssh_version():
     except subprocess.CalledProcessError as e:
         return False, f"Error: {e}", None
 
-# PAM.d file check for 'nullok' in the line 'auth sufficient pam_unix.so nullok try_first_pass'
-
-def check_pam_d(distro_name):
-    if distro_name == "CentOS Linux" or distro_name.startswith("Red Hat"):
-        pam_d_path = "/etc/pam.d/password-auth"
-    elif distro_name.startswith("SUSE Linux"):
-        pam_d_path = "/etc/pam.d/common-auth-pc"
-    else:
-        return
-    
-    found_nullok = False
-
-    try:
-        with open(pam_d_path, 'r') as file:
-            lines = file.readlines()
-
-        for line in lines:
-            if line.startswith("auth sufficient pam_unix.so"):
-                if "nullok" in line:
-                    found_nullok = True
-                    break
-
-    except FileNotFoundError:
-        logging.info("pam.d file not found.")
-        return
-    
-    if not found_nullok:
-        logging.info("\n[-] pam.d file missing 'nullok' in the line 'auth sufficient pam_unix.so nullok try_first_pass'")
-    else:
-        logging.info("\npam.d is correctly configured.")
-
 # Backup a file by making .bak copy
 
 def backup_file(file_path):
@@ -478,6 +447,7 @@ def check_sshd_config():
         found_allow_user = False  # AllowUser should not be present
         found_pubkey_accepted_algorithms = False  # PubkeyAcceptedAlgorithms
         permit_empty_pass = False  # PermitEmptyPasswords yes
+        pubkey_auth = False # PubkeyAuthentication yes  
         changes_made = False  # Flag to track if any changes were made
         try:
             with open(sshd_config_path, "r") as file:
@@ -496,6 +466,8 @@ def check_sshd_config():
                         found_pubkey_accepted_algorithms = True
                     if "PermitEmptyPasswords yes" in line and not line.strip().startswith("#"):
                         permit_empty_pass = True
+                    if "PubkeyAuthentication yes" in line and not line.strip().startswith("#"):
+                        pubkey_auth = True
         except FileNotFoundError:
             logging.info("sshd_config file not found.")
             return
@@ -523,11 +495,13 @@ def check_sshd_config():
                 logging.info("PSMP authentication block was not added.")
         
         if not permit_empty_pass and not intergated_psmp:
-            logging.info("PermitEmptyPasswords missing.")
+            logging.info("[!] PermitEmptyPasswords missing.")
         if found_allow_user:
-            logging.info("AllowUser mentioned found.")
+            logging.info("[!] AllowUser mentioned in sshd_config and should not be present.")
+        if not pubkey_auth:
+            logging.info("[!] PubkeyAuthentication is not enabled.")
         if not found_pubkey_accepted_algorithms:
-            logging.info("[!] SSH-Keys auth not enabled, sshd_config missing 'PubkeyAcceptedAlgorithms'.")
+            logging.info("[!] MFA Caching using RSA disabled, required 'PubkeyAcceptedAlgorithms +ssh-rsa' in sshd_config.")
         else:
             logging.info("No misconfiguration found related to sshd_config.")
 
@@ -738,7 +712,8 @@ def generate_psmp_connection_string():
     print("More information: https://cyberark.my.site.com/s/article/PSM-for-SSH-Syntax-Cheat-Sheet")
     print("Please provide the following details to generate the connection string:\n")
     # Collect inputs from the user
-    print("[!] MFA Caching requires FQDN of the Vault user.\n")
+    print("[!] MFA Caching requires FQDN of the Domain-Vault user.\n")
+    print("[!] Target user and target FQDN are case sensitive.\n")
     vault_user = input("Enter vault user: ")
     target_user = input("Enter target user: ")
     target_user_domain = input("Enter target user domain address (leave empty if local): ")
@@ -938,14 +913,15 @@ def disable_nscd_service():
         # Check if the nscd service is running
         result = subprocess.run(["systemctl", "is-active", "nscd"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if result.stdout.strip() == "active":
-            confirmation = input("\nNSCD service is active, Terminate and disable to eliminate future issues? (y/n): ")
+            logging.info("\nNSCD service is active and should be diabled\nhttps://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/before-installing-psmp.htm?tocpath=Installer%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____1#DisableNSCD")
+            confirmation = input("\nDo you allow to terminate and disable NSCD? (y/n): ")
             if confirmation == "y":
                 # Stop and disable the nscd service
                 subprocess.run(["systemctl", "stop", "nscd"], check=True)
                 subprocess.run(["systemctl", "disable", "nscd"], check=True)
                 logging.info("NSCD Stopped and Disabled.")
         else:
-            logging.info("NSCD service is Not Running as expected.")
+            logging.info("NSCD service is not running as expected.")
     except subprocess.CalledProcessError as e:
         logging.info(f"Error: {e}")
 
@@ -978,7 +954,7 @@ def verify_nsswitch_conf(psmp_version):
     }
     
     # Choose expected config based on version
-    if psmp_version > 13.0:
+    if is_integrated(psmp_version) or psmp_version > 13.0:
             logging.info("nsswitch.conf is correctly configured.")
             return False
     if psmp_version >= 12.2:
@@ -1043,10 +1019,12 @@ def verify_nsswitch_conf(psmp_version):
 
 # Automates the repair of the RPM for the specified PSMP version.
 
-def rpm_repair(psmp_version):
+def rpm_repair(psmp_version, repairMode):
     logging.info(f"\nPSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
-    logging.info("\nPSMP RPM Installation Repair:")
-
+    if repairMode:
+        logging.info("\nPSMP RPM Installation Repair:")
+    else:
+        logging.info("\nPSMP RPM Installation:")
     logging.info(f"PSMP Version Detected: {psmp_version}")
     sleep(2)
     try:
@@ -1135,26 +1113,27 @@ def rpm_repair(psmp_version):
                 sys.exit(1)
 
             # Update CreateVaultEnvironment and EnableADBridge
-            skip_vault_env = input("Do you want to skip Vault environment creation? (y/n): ").strip().lower()
-            if skip_vault_env == 'y':
-                for i, line in enumerate(psmpparms_content):
-                    if line.startswith("#CreateVaultEnvironment="):
-                        psmpparms_content[i] = "CreateVaultEnvironment=No\n"
-                        break
-                logging.info("Vault environment creation set to No.")
-            else:
-                logging.info("Vault environment creation set to Yes.")
+            if repairMode:
+                skip_vault_env = input("Do you want to skip Vault environment creation? (y/n): ").strip().lower()
+                if skip_vault_env == 'y':
+                    for i, line in enumerate(psmpparms_content):
+                        if line.startswith("#CreateVaultEnvironment="):
+                            psmpparms_content[i] = "CreateVaultEnvironment=No\n"
+                            break
+                    logging.info("Vault environment creation set to No.")
+                else:
+                    logging.info("Vault environment creation set to Yes.")
 
-            # Update Integration state
-            for i, line in enumerate(psmpparms_content):
-                if line.lower().startswith("installcyberarksshd="):
-                    if is_integrated(psmp_version):
-                        psmpparms_content[i] = "InstallCyberArkSSHD=Integrated\n"
-                        logging.info("PSMP set to integrated.")
-                    else:
-                        psmpparms_content[i] = "InstallCyberArkSSHD=Yes\n"
-                        logging.info("PSMP set to non-integrated.")
-                    break
+                # Update Integration state
+                for i, line in enumerate(psmpparms_content):
+                    if line.lower().startswith("installcyberarksshd="):
+                        if is_integrated(psmp_version):
+                            psmpparms_content[i] = "InstallCyberArkSSHD=Integrated\n"
+                            logging.info("PSMP set to integrated.")
+                        else:
+                            psmpparms_content[i] = "InstallCyberArkSSHD=Yes\n"
+                            logging.info("PSMP set to non-integrated.")
+                        break
 
             disable_adbridge = input("Do you want to disable ADBridge? (y/n): ").strip().lower()
             if disable_adbridge == 'y':
@@ -1195,7 +1174,7 @@ def rpm_repair(psmp_version):
         else:
             logging.info(f"\nCreateCredFile not found in {install_folder}")
 
-        # Step 5: Install the RPM
+        # Step 5: Install/Repair the RPM
         try:
             if is_integrated(psmp_version) and float(psmp_version) <= 13.2:
                 integrated_rpm_dir = os.path.join(install_folder, "IntegratedMode")
@@ -1209,14 +1188,22 @@ def rpm_repair(psmp_version):
                     logging.warning("No IntegratedMode RPM file found.")
                 else:
                     integrated_rpm_path = integrated_rpm_files[0]  # Repair the first RPM found
-                    logging.info(f"\nRepairing IntegratedMode RPM from: {integrated_rpm_path}")
-                    subprocess.run(["rpm", "-Uvh", "--force", integrated_rpm_path])
+                    if repairMode:
+                        logging.info(f"\nRepairing IntegratedMode RPM from: {integrated_rpm_path}")
+                        subprocess.run(["rpm", "-Uvh", "--force", integrated_rpm_path])
+                    else:
+                        logging.info(f"\Installing IntegratedMode RPM from: {integrated_rpm_path}")
+                        subprocess.run(["rpm", "-ivh", "--force", integrated_rpm_path])
                     logging.info(f"\n[+] IntegratedMode RPM {integrated_rpm_path} installed successfully.")
             
             # Proceed with the main RPM repair
             rpm_file_path = os.path.join(install_folder, matching_rpms[0])
-            logging.info(f"\nRepairing main RPM from: {rpm_file_path}")
-            subprocess.run(["rpm", "-Uvh", "--force", rpm_file_path])
+            if repairMode:
+                logging.info(f"\nRepairing main RPM from: {rpm_file_path}")
+                subprocess.run(["rpm", "-Uvh", "--force", rpm_file_path])
+            else:
+                logging.info(f"\Installing main RPM from: {rpm_file_path}")
+                subprocess.run(["rpm", "-ivh", "--force", rpm_file_path])
             logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
         except subprocess.CalledProcessError:
             logging.error("\n[-] Error during RPM file search or installation.")
@@ -1247,7 +1234,8 @@ if __name__ == "__main__":
     # Get the installed PSMP version
     psmp_version = get_installed_psmp_version()
     if not psmp_version:
-        logging.info("[-] No PSMP version found.")
+        logging.info("\n[-] No PSMP version found.")
+        logging.info("\n[!] Kindly proceed with installation repair by executing: ' python3 PSMPChecker.py repair '")
         sys.exit(1)
 
     # Check if the command-line argument is 'logs', 'string' or 'restore-sshd', then execute the function
@@ -1265,7 +1253,12 @@ if __name__ == "__main__":
             sys.exit(1)
         elif arg == "repair":
             log_filename = datetime.now().strftime("PSMPChecker-Repair-%m-%d-%y-%H:%M.log")
-            rpm_repair(psmp_version)
+            rpm_repair(psmp_version, True)
+            sys.exit(1)
+        elif arg == "install":
+            log_filename = datetime.now().strftime("PSMPChecker-Installation-%m-%d-%y-%H:%M.log")
+            rpm_repair(psmp_version, False)
+            delete_file(log_filename)
             sys.exit(1)
 
     # Get the Linux distribution and version
@@ -1278,8 +1271,6 @@ if __name__ == "__main__":
     else:
         logging.info(f"PSMP Version {psmp_version} Does Not Support {distro_name} {distro_version}")
         # Fixes typo in the version numeric value
-        if psmp_version == 12.06:
-            psmp_version = 12.6
         logging.info(f"Please refer to the PSMP documentation for supported versions.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/Content/PAS%20SysReq/System%20Requirements%20-%20PSMP.htm")
     
     # Check if the hostname changed from default value
@@ -1305,25 +1296,20 @@ if __name__ == "__main__":
     #Check SELinux
     print_latest_selinux_prevention_lines()
 
-    # Check PAM configuration
-    if float(psmp_version) <= 13.0:
-        logging.info("\nPAM Configuration Check:")
-        check_pam_d(distro_name)
-
     # Search for failed connection attempts in the secure log
-        logging.info("\nSearching patterns in the secure logs...")
-        sleep(2)
-        failed_attempts = search_secure_log(distro_name)
-        if not failed_attempts:
-            logging.info("No lines containing any of the patterns found.")
-        else:
-            for attempt in failed_attempts:
-                logging.info(attempt)
+    logging.info("\nSearching patterns in the secure logs...")
+    sleep(2)
+    failed_attempts = search_secure_log(distro_name)
+    if not failed_attempts:
+        logging.info("No lines containing any of the patterns found.")
+    else:
+        for attempt in failed_attempts:
+            logging.info(attempt)
 
     # Search for patterns in the PSMPTrace.log file
-        logging.info("\nSearching patterns in the PSMPTrace.log...")
-        sleep(2)
-        search_log_for_patterns()
+    logging.info("\nSearching patterns in the PSMPTrace.log...")
+    sleep(2)
+    search_log_for_patterns()
 
     # Check service status
     logging.info("\nServices Availability Check:")
