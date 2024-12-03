@@ -218,13 +218,6 @@ def is_integrated(psmp_version):
         result = subprocess.run(['rpm', '-qa'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         installed_packages = result.stdout.splitlines()
 
-        # Parse and compare the PSMP version
-        try:
-            major, minor = map(int, psmp_version.split('.'))
-        except ValueError:
-            logging.error(f"Invalid PSMP version format: {psmp_version}")
-            return False
-
         # Check if the PSMP version is 13.2 or higher
         if float(psmp_version) > 13.2:
             return True
