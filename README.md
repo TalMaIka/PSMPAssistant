@@ -23,7 +23,7 @@ Run the script without any arguments to check the PSMP compatibility with the cu
 ```bash
 python3 PSMPChecker.py
 ```
-<img src="https://i.postimg.cc/zf9GLpwM/123.png" alt="Tool landing page" style="width:92%;">
+<img src="https://i.postimg.cc/vZqBXszB/main.png" alt="Tool landing page" style="width:80%;">
 
 ### Collecting Logs
 
@@ -32,6 +32,7 @@ To collect logs from specified locations and create a zip file, use the `logs` a
 ```bash
 python3 PSMPChecker.py logs
 ```
+<img src="https://i.postimg.cc/1zbzhrb1/logs.png" alt="Tool landing page" style="width:80%;">
 
 ### RPM Repair Automation
 
@@ -40,6 +41,7 @@ To execute the PSMP RPM repair process `repair` argument:
 ```bash
 python3 PSMPChecker.py repair
 ```
+<img src="https://i.postimg.cc/dt9DkdZG/repair.png" style="width:80%;">
 
 ### RPM Install Automation
 
@@ -56,6 +58,7 @@ To generate a PSMP connection string, use the `string` argument:
 ```bash
 python3 PSMPChecker.py string
 ```
+<img src="https://i.postimg.cc/HLrLhhZt/string.png" alt="Tool landing page" style="width:80%;">
 
 ### Restoring SSHD Configuration
 
