@@ -886,7 +886,7 @@ def hostname_check():
     # Check if the hostname includes 'localhost'
     sleep(2)
     if 'localhost' in hostname.lower():
-        logging.info(f"\n[!] Hostname: '{hostname}' as default value, Change it to enique hostname to eliminate future issues.")
+        logging.info(f"\n[!] Hostname: '{hostname}' as default value, Change it to unique hostname to eliminate future issues.")
     return hostname
 
 #SELinux check
