@@ -898,7 +898,6 @@ def print_latest_selinux_prevention_lines():
         result = subprocess.run(['sestatus'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
         
         # Print the output of 'sestatus' if SELinux is installed
-        logging.info("SELinux Status:")
         logging.info(result.stdout)
         
     except subprocess.CalledProcessError:
@@ -1261,10 +1260,6 @@ if __name__ == "__main__":
 
     # Get the installed PSMP version
     psmp_version = get_installed_psmp_version()
-    if not psmp_version:
-        logging.info("\n[-] No PSMP version found.")
-        logging.info("\n[!] Kindly proceed with installation repair by executing: ' python3 PSMPChecker.py repair '")
-        sys.exit(1)
 
     # Check if the command-line argument is 'logs', 'string' or 'restore-sshd', then execute the function
     for arg in sys.argv:
@@ -1301,6 +1296,13 @@ if __name__ == "__main__":
         # Fixes typo in the version numeric value
         logging.info(f"Please refer to the PSMP documentation for supported versions.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/Content/PAS%20SysReq/System%20Requirements%20-%20PSMP.htm")
     
+
+
+    if not psmp_version:
+        logging.info("\n[-] No PSMP version found.")
+        logging.info("\n[!] Kindly proceed with installation repair by executing: ' python3 PSMPChecker.py repair '")
+        sys.exit(1)
+        
     # Check if the hostname changed from default value
     hostname_check() 
 
