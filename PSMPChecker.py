@@ -118,8 +118,10 @@ def get_installed_psmp_version():
     
     except subprocess.CalledProcessError:
         # Log and return None if the command fails
+        for arg in sys.argv:
+            if arg == "install":
+                 return None
         logging.error("Failed to execute RPM query command.")
-        return None
     except Exception as e:
         # Log unexpected errors
         logging.error(f"An error occurred: {e}")
@@ -1046,12 +1048,9 @@ def verify_nsswitch_conf(psmp_version):
 
 # Automates the repair of the RPM for the specified PSMP version.
 
-def rpm_repair(psmp_version, repairMode):
+def rpm_repair(psmp_version):
     logging.info(f"\nPSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
-    if repairMode:
-        logging.info("\nPSMP RPM Installation Repair:")
-    else:
-        logging.info("\nPSMP RPM Installation:")
+    logging.info("\nPSMP RPM Installation Repair:")
     logging.info(f"PSMP Version Detected: {psmp_version}")
     sleep(2)
     try:
@@ -1061,7 +1060,6 @@ def rpm_repair(psmp_version, repairMode):
             for file in files:
                 if file.startswith('CARK') and file.endswith('.rpm'):
                     rpm_files.append(os.path.join(root, file))
-
         # Filter RPM files by PSMP version in the file name
         matching_rpms = [rpm for rpm in rpm_files if psmp_version in rpm and "infra" not in rpm]
 
@@ -1069,6 +1067,7 @@ def rpm_repair(psmp_version, repairMode):
             logging.info(f"No RPM file found matching version {psmp_version}. Please ensure the correct version is installed.")
             return  # No matching RPM found
 
+        
         # If there are multiple matches, select the first one (or apply more logic if needed)
         rpm_location = matching_rpms[0]
         install_folder = os.path.dirname(rpm_location)
@@ -1140,27 +1139,26 @@ def rpm_repair(psmp_version, repairMode):
                 sys.exit(1)
 
             # Update CreateVaultEnvironment and EnableADBridge
-            if repairMode:
-                skip_vault_env = input("Do you want to skip Vault environment creation? (y/n): ").strip().lower()
-                if skip_vault_env == 'y':
-                    for i, line in enumerate(psmpparms_content):
-                        if line.startswith("#CreateVaultEnvironment="):
-                            psmpparms_content[i] = "CreateVaultEnvironment=No\n"
-                            break
-                    logging.info("Vault environment creation set to No.")
-                else:
-                    logging.info("Vault environment creation set to Yes.")
-
-                # Update Integration state
+            skip_vault_env = input("Do you want to skip Vault environment creation? (y/n): ").strip().lower()
+            if skip_vault_env == 'y':
                 for i, line in enumerate(psmpparms_content):
-                    if line.lower().startswith("installcyberarksshd="):
-                        if is_integrated(psmp_version):
-                            psmpparms_content[i] = "InstallCyberArkSSHD=Integrated\n"
-                            logging.info("PSMP set to integrated.")
-                        else:
-                            psmpparms_content[i] = "InstallCyberArkSSHD=Yes\n"
-                            logging.info("PSMP set to non-integrated.")
+                    if line.startswith("#CreateVaultEnvironment="):
+                        psmpparms_content[i] = "CreateVaultEnvironment=No\n"
                         break
+                logging.info("Vault environment creation set to No.")
+            else:
+                logging.info("Vault environment creation set to Yes.")
+
+            # Update Integration state
+            for i, line in enumerate(psmpparms_content):
+                if line.lower().startswith("installcyberarksshd="):
+                    if is_integrated(psmp_version):
+                        psmpparms_content[i] = "InstallCyberArkSSHD=Integrated\n"
+                        logging.info("PSMP set to integrated.")
+                    else:
+                        psmpparms_content[i] = "InstallCyberArkSSHD=Yes\n"
+                        logging.info("PSMP set to non-integrated.")
+                    break
 
             disable_adbridge = input("Do you want to disable ADBridge? (y/n): ").strip().lower()
             if disable_adbridge == 'y':
@@ -1215,22 +1213,207 @@ def rpm_repair(psmp_version, repairMode):
                     logging.warning("No IntegratedMode RPM file found.")
                 else:
                     integrated_rpm_path = integrated_rpm_files[0]  # Repair the first RPM found
-                    if repairMode:
-                        logging.info(f"\nRepairing IntegratedMode RPM from: {integrated_rpm_path}")
-                        subprocess.run(["rpm", "-Uvh", "--force", integrated_rpm_path])
-                    else:
-                        logging.info(f"\Installing IntegratedMode RPM from: {integrated_rpm_path}")
-                        subprocess.run(["rpm", "-ivh", "--force", integrated_rpm_path])
+                    logging.info(f"\nRepairing IntegratedMode RPM from: {integrated_rpm_path}")
+                    subprocess.run(["rpm", "-Uvh", "--force", integrated_rpm_path])
+                    
                     logging.info(f"\n[+] IntegratedMode RPM {integrated_rpm_path} installed successfully.")
             
             # Proceed with the main RPM repair
             rpm_file_path = os.path.join(install_folder, matching_rpms[0])
-            if repairMode:
-                logging.info(f"\nRepairing main RPM from: {rpm_file_path}")
-                subprocess.run(["rpm", "-Uvh", "--force", rpm_file_path])
+            logging.info(f"\nRepairing main RPM from: {rpm_file_path}")
+            subprocess.run(["rpm", "-Uvh", "--force", rpm_file_path])
+            logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
+        except subprocess.CalledProcessError:
+            logging.error("\n[-] Error during RPM file search or installation.")
+            confirmation = input("Do you want to see the installation logs? (y/n): ")
+            if confirmation.lower() == "y":
+                try:
+                    with open("/var/tmp/psmp_install.log", "r") as f:
+                        for line in f:
+                            print(line.strip())
+                except Exception as e:
+                    logging.error(f"Could not read log file: {e}")
+
+    except Exception as e:
+        logging.error(f"An error occurred during the RPM repair process: {e}")
+
+
+#RPM installation
+
+def rpm_instal():
+    logging.info(f"\nPSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
+    logging.info("\nPSMP RPM Installation:")
+    sleep(2)
+    try:
+        # Step 1: Manually search the entire file system for RPM files
+        rpm_files = []
+        for root, _, files in os.walk('/'):
+            for file in files:
+                if file.startswith('CARK') and file.endswith('.rpm'):
+                    rpm_files.append(os.path.join(root, file))
+
+        # Step 2: Filter RPM files by PSMP version in the file name
+        matching_rpms = [rpm for rpm in rpm_files if "infra" not in rpm]
+
+        if not matching_rpms:
+            logging.info("No installation RPM found. Please ensure to unzip the PSMP installation package.")
+            return None  # No matching RPM found
+
+        # If there are multiple matches, select the first one (or apply more logic if needed)
+        rpm_location = matching_rpms[0]
+        install_folder = os.path.dirname(rpm_location)
+        logging.info(f"Installation folder found at: {install_folder}")
+
+        # Validate installation folder
+        install_folder_input = input(f"Is the installation folder {install_folder} correct? (y/n): ").strip().lower()
+        if install_folder_input != 'y':
+            logging.info("Installation folder not confirmed by user. Exiting.")
+            return
+
+        # Extract the PSMP version from the RPM file name
+        psmp_version = re.search(r"CARKpsmp-(\d+\.\d)", rpm_location)
+        if psmp_version:
+            psmp_version = psmp_version.group(1)
+            logging.info(f"PSMP version detected: {psmp_version}")
+        else:
+            logging.info("PSMP version not found in the RPM file name.")
+            return
+
+        # Step 3: Check and modify vault.ini file
+        vault_ini_path = os.path.join(install_folder, "vault.ini")
+        if os.path.exists(vault_ini_path):
+            with open(vault_ini_path, "r") as f:
+                vault_ini_content = f.readlines()
+
+            # Extract the vault IP from the file and confirm with the user
+            vault_ip = None
+            for line in vault_ini_content:
+                if line.startswith("ADDRESS="):
+                    vault_ip = line.strip().split("=")[1]
+                    break
+
+            if vault_ip:
+                logging.info(f"Found vault IP: {vault_ip}")
+                user_ip = input(f"Is the vault IP {vault_ip} correct? (y/n): ").strip().lower()
+                if user_ip != 'y':
+                    new_ip = input("Please enter the correct vault IP: ").strip()
+                    # Update the vault.ini file
+                    for i, line in enumerate(vault_ini_content):
+                        if line.startswith("ADDRESS="):
+                            vault_ini_content[i] = f"ADDRESS={new_ip}\n"
+                            break
+
+                    with open(vault_ini_path, "w") as f:
+                        f.writelines(vault_ini_content)
+                    logging.info(f"Updated vault IP to {new_ip} in vault.ini.")
             else:
-                logging.info(f"\Installing main RPM from: {rpm_file_path}")
-                subprocess.run(["rpm", "-ivh", "--force", rpm_file_path])
+                logging.info("No vault IP address found in vault.ini.")
+        else:
+            logging.info(f"vault.ini not found in {install_folder}")
+
+        # Step 4: Modify psmpparms.sample file based on user input
+        psmpparms_sample_path = os.path.join(install_folder, "psmpparms.sample")
+        if os.path.exists(psmpparms_sample_path):
+            with open(psmpparms_sample_path, "r") as f:
+                psmpparms_content = f.readlines()
+
+            logging.info("Found psmpparms.sample file.")
+
+            for i, line in enumerate(psmpparms_content):
+                if line.startswith("InstallationFolder="):
+                    psmpparms_content[i] = f"InstallationFolder={install_folder}\n"
+                    break
+            logging.info(f"Installation folder updated to {install_folder} in psmpparms.")
+
+            # Accept CyberArk EULA
+            accept_eula = input("Do you accept the CyberArk EULA? (y/n): ").strip().lower()
+            if accept_eula == 'y':
+                for i, line in enumerate(psmpparms_content):
+                    if line.startswith("AcceptCyberArkEULA="):
+                        psmpparms_content[i] = "AcceptCyberArkEULA=Yes\n"
+                        break
+                logging.info("CyberArk EULA accepted.")
+            else:
+                logging.info("CyberArk EULA not accepted.")
+                sleep(2)
+                sys.exit(1)
+
+            # Update EnableADBridge
+            logging.info("Vault environment creation set to Yes.")
+            if float(psmp_version) <= 13.2:
+                integration_mode = input("Do you want to install PMSP as Integrated-Mode? (y/n): ").strip().lower()
+            # Update Integration state
+            for i, line in enumerate(psmpparms_content):
+                if line.lower().startswith("installcyberarksshd="):
+                    if float(psmp_version) > 13.2 or integration_mode == 'y':
+                        psmpparms_content[i] = "InstallCyberArkSSHD=Integrated\n"
+                        logging.info("PSMP set to integrated.")
+                    else:
+                        psmpparms_content[i] = "InstallCyberArkSSHD=Yes\n"
+                        logging.info("PSMP set to non-integrated.")
+                    break
+
+            disable_adbridge = input("Do you want to disable ADBridge? (y/n): ").strip().lower()
+            if disable_adbridge == 'y':
+                for i, line in enumerate(psmpparms_content):
+                    if line.startswith("#EnableADBridge="):
+                        psmpparms_content[i] = "EnableADBridge=No\n"
+                        break
+                logging.info("ADBridge disabled.")
+            else:
+                logging.info("ADBridge set to Yes.")
+
+            # Save changes to psmpparms.sample file
+            with open("/var/tmp/psmpparms", "w") as f:
+                f.writelines(psmpparms_content)
+            logging.info("psmpparms file updated and copied to /var/tmp/psmpparms.")
+
+        else:
+            logging.info(f"psmpparms.sample not found in {install_folder}")
+
+        # Step 5: Execute CreateCredFile and follow instructions
+        create_cred_file_path = os.path.join(install_folder, "CreateCredFile")
+        if os.path.exists(create_cred_file_path):
+            confirmation = input("Do you allow chmod 755 CreateCredFile (y/n):")
+            if confirmation == "y":
+                os.chmod(create_cred_file_path, 0o755)  # Make it executable
+                logging.info("\nCreateCredFile executed.\n")
+                vaultAdmin = input("Vault Username ==> ")
+                vaultPass = getpass.getpass("Vault Password (will be encrypted in secret file) ==> ")
+            subprocess.run([create_cred_file_path, "user.cred", "Password", "-Username", vaultAdmin, "-Password", vaultPass, "-EntropyFile"])
+            # Copy user.cred and user.cred.entropy to installation folder
+            try:
+                subprocess.run(["mv", "-f", "user.cred", "user.cred.entropy", install_folder], check=True)
+                logging.info("\nuser.cred and user.cred.entropy copied to installation folder.")
+            except FileNotFoundError:
+                logging.error("\nuser.cred or user.cred.entropy file not found.")
+            except Exception as e:
+                logging.error(f"Error: {e}")
+        else:
+            logging.info(f"\nCreateCredFile not found in {install_folder}")
+
+        # Step 5: Install/Repair the RPM
+        try:
+            if integration_mode == 'y' and float(psmp_version) <= 13.2:
+                integrated_rpm_dir = os.path.join(install_folder, "IntegratedMode")
+                integrated_rpm_files = [
+                    os.path.join(integrated_rpm_dir, rpm)
+                    for rpm in os.listdir(integrated_rpm_dir)
+                    if rpm.endswith(".rpm")
+                ]
+                
+                if not integrated_rpm_files:
+                    logging.warning("No IntegratedMode RPM file found.")
+                else:
+                    integrated_rpm_path = integrated_rpm_files[0]  # Repair the first RPM found
+                    logging.info(f"\Installing IntegratedMode RPM from: {integrated_rpm_path}")
+                    subprocess.run(["rpm", "-ivh", "--force", integrated_rpm_path])
+                    logging.info(f"\n[+] IntegratedMode RPM {integrated_rpm_path} installed successfully.")
+            
+            # Proceed with the main RPM repair
+            rpm_file_path = os.path.join(install_folder, matching_rpms[0])
+            logging.info(f"\Installing main RPM from: {rpm_file_path}")
+            subprocess.run(["rpm", "-ivh", "--force", rpm_file_path])
             logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
         except subprocess.CalledProcessError:
             logging.error("\n[-] Error during RPM file search or installation.")
@@ -1252,6 +1435,7 @@ if __name__ == "__main__":
 
     # Print the PSMPChecker logo
     print_logo()
+
     #Verifing privileged user
     check_privileges()
 
@@ -1280,8 +1464,7 @@ if __name__ == "__main__":
             sys.exit(1)
         elif arg == "install":
             log_filename = datetime.now().strftime("PSMPChecker-Installation-%m-%d-%y-%H:%M.log")
-            rpm_repair(psmp_version, False)
-            delete_file(log_filename)
+            rpm_instal()
             sys.exit(1)
 
     # Get the Linux distribution and version
@@ -1300,7 +1483,7 @@ if __name__ == "__main__":
 
     if not psmp_version:
         logging.info("\n[-] No PSMP version found.")
-        logging.info("\n[!] Kindly proceed with installation repair by executing: ' python3 PSMPChecker.py repair '")
+        logging.info("\n[!] Kindly proceed with PSMP RPM repair by executing: ' python3 PSMPChecker.py repair '")
         sys.exit(1)
         
     # Check if the hostname changed from default value
