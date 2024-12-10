@@ -1285,6 +1285,7 @@ def rpm_instal():
             with open(vault_ini_path, "r") as f:
                 vault_ini_content = f.readlines()
 
+
             # Extract the vault IP from the file and confirm with the user
             vault_ip = None
             for line in vault_ini_content:
@@ -1460,7 +1461,7 @@ if __name__ == "__main__":
             sys.exit(1)
         elif arg == "repair":
             log_filename = datetime.now().strftime("PSMPChecker-Repair-%m-%d-%y-%H:%M.log")
-            rpm_repair(psmp_version, True)
+            rpm_repair(psmp_version)
             sys.exit(1)
         elif arg == "install":
             log_filename = datetime.now().strftime("PSMPChecker-Installation-%m-%d-%y-%H:%M.log")
