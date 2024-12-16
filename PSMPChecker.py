@@ -121,7 +121,6 @@ def get_installed_psmp_version():
         for arg in sys.argv:
             if arg == "install":
                  return None
-        logging.error("Failed to execute RPM query command.")
     except Exception as e:
         # Log unexpected errors
         logging.error(f"An error occurred: {e}")
@@ -1096,7 +1095,9 @@ def rpm_repair(psmp_version):
                 logging.info(f"Found vault IP: {vault_ip}")
                 user_ip = input(f"Is the vault IP {vault_ip} correct? (y/n): ").strip().lower()
                 if user_ip != 'y':
-                    new_ip = input("Please enter the correct vault IP: ").strip()
+                    new_ip = input("Please enter the vault IP: ").strip()
+                    while len(new_ip) < 5:
+                        new_ip = input("Please enter a valid vault IP: ").strip()
                     # Update the vault.ini file
                     for i, line in enumerate(vault_ini_content):
                         if line.startswith("ADDRESS="):
@@ -1108,8 +1109,21 @@ def rpm_repair(psmp_version):
                     logging.info(f"Updated vault IP to {new_ip} in vault.ini.")
             else:
                 logging.info("No vault IP address found in vault.ini.")
+                new_ip = input("Please enter the vault IP: ").strip()
+                while len(new_ip) < 5:
+                    new_ip = input("Please enter a valid vault IP: ").strip()
+                # Update the vault.ini file
+                for i, line in enumerate(vault_ini_content):
+                    if line.startswith("ADDRESS="):
+                        vault_ini_content[i] = f"ADDRESS={new_ip}\n"
+                        break
+
+                with open(vault_ini_path, "w") as f:
+                    f.writelines(vault_ini_content)
+                logging.info(f"Updated vault IP to {new_ip} in vault.ini.")
         else:
             logging.info(f"vault.ini not found in {install_folder}")
+            sys.exit(1)
 
         # Step 4: Modify psmpparms.sample file based on user input
         psmpparms_sample_path = os.path.join(install_folder, "psmpparms.sample")
@@ -1199,7 +1213,7 @@ def rpm_repair(psmp_version):
         else:
             logging.info(f"\nCreateCredFile not found in {install_folder}")
 
-        # Step 5: Install/Repair the RPM
+        # Step 5: Repair the RPM
         try:
             if is_integrated(psmp_version) and float(psmp_version) <= 13.2:
                 integrated_rpm_dir = os.path.join(install_folder, "IntegratedMode")
@@ -1297,7 +1311,9 @@ def rpm_instal():
                 logging.info(f"Found vault IP: {vault_ip}")
                 user_ip = input(f"Is the vault IP {vault_ip} correct? (y/n): ").strip().lower()
                 if user_ip != 'y':
-                    new_ip = input("Please enter the correct vault IP: ").strip()
+                    new_ip = input("Please enter the vault IP: ").strip()
+                    while len(new_ip) < 5:
+                        new_ip = input("Please enter a valid vault IP: ").strip()
                     # Update the vault.ini file
                     for i, line in enumerate(vault_ini_content):
                         if line.startswith("ADDRESS="):
@@ -1309,8 +1325,21 @@ def rpm_instal():
                     logging.info(f"Updated vault IP to {new_ip} in vault.ini.")
             else:
                 logging.info("No vault IP address found in vault.ini.")
+                new_ip = input("Please enter the vault IP: ").strip()
+                while len(new_ip) < 5:
+                    new_ip = input("Please enter a valid vault IP: ").strip()
+                # Update the vault.ini file
+                for i, line in enumerate(vault_ini_content):
+                    if line.startswith("ADDRESS="):
+                        vault_ini_content[i] = f"ADDRESS={new_ip}\n"
+                        break
+
+                with open(vault_ini_path, "w") as f:
+                    f.writelines(vault_ini_content)
+                logging.info(f"Updated vault IP to {new_ip} in vault.ini.")
         else:
             logging.info(f"vault.ini not found in {install_folder}")
+            sys.exit(1)
 
         # Step 4: Modify psmpparms.sample file based on user input
         psmpparms_sample_path = os.path.join(install_folder, "psmpparms.sample")
@@ -1341,6 +1370,7 @@ def rpm_instal():
 
             # Update EnableADBridge
             logging.info("Vault environment creation set to Yes.")
+            integration_mode = 'y'
             if float(psmp_version) <= 13.2:
                 integration_mode = input("Do you want to install PMSP as Integrated-Mode? (y/n): ").strip().lower()
             # Update Integration state
@@ -1468,6 +1498,12 @@ if __name__ == "__main__":
             rpm_instal()
             sys.exit(1)
 
+    # Check if PSMP installed.
+    if not psmp_version:
+        logging.info("\n[-] No PSMP version found.")
+        logging.info("\n[!] Kindly proceed with PSMP RPM repair by executing: ' python3 PSMPChecker.py repair '")
+        sys.exit(1)
+        
     # Get the Linux distribution and version
     logging.info("\nPSMP Compatibility Check:")
     sleep(2)
@@ -1479,13 +1515,6 @@ if __name__ == "__main__":
         logging.info(f"PSMP Version {psmp_version} Does Not Support {distro_name} {distro_version}")
         # Fixes typo in the version numeric value
         logging.info(f"Please refer to the PSMP documentation for supported versions.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/Content/PAS%20SysReq/System%20Requirements%20-%20PSMP.htm")
-    
-
-
-    if not psmp_version:
-        logging.info("\n[-] No PSMP version found.")
-        logging.info("\n[!] Kindly proceed with PSMP RPM repair by executing: ' python3 PSMPChecker.py repair '")
-        sys.exit(1)
         
     # Check if the hostname changed from default value
     hostname_check() 
