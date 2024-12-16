@@ -1195,12 +1195,10 @@ def rpm_repair(psmp_version):
         # Step 5: Execute CreateCredFile and follow instructions
         create_cred_file_path = os.path.join(install_folder, "CreateCredFile")
         if os.path.exists(create_cred_file_path):
-            confirmation = input("Do you allow chmod 755 CreateCredFile (y/n):")
-            if confirmation == "y":
-                os.chmod(create_cred_file_path, 0o755)  # Make it executable
-                logging.info("\nCreateCredFile executed.\n")
-                vaultAdmin = input("Vault Username ==> ")
-                vaultPass = getpass.getpass("Vault Password (will be encrypted in secret file) ==> ")
+            os.chmod(create_cred_file_path, 0o755)  # Make it executable
+            logging.info("\nCreateCredFile executed.\n")
+            vaultAdmin = input("Vault Username ==> ")
+            vaultPass = getpass.getpass("Vault Password (will be encrypted in secret file) ==> ")
             subprocess.run([create_cred_file_path, "user.cred", "Password", "-Username", vaultAdmin, "-Password", vaultPass, "-EntropyFile"])
             # Copy user.cred and user.cred.entropy to installation folder
             try:
@@ -1405,12 +1403,10 @@ def rpm_instal():
         # Step 5: Execute CreateCredFile and follow instructions
         create_cred_file_path = os.path.join(install_folder, "CreateCredFile")
         if os.path.exists(create_cred_file_path):
-            confirmation = input("Do you allow chmod 755 CreateCredFile (y/n):")
-            if confirmation == "y":
-                os.chmod(create_cred_file_path, 0o755)  # Make it executable
-                logging.info("\nCreateCredFile executed.\n")
-                vaultAdmin = input("Vault Username ==> ")
-                vaultPass = getpass.getpass("Vault Password (will be encrypted in secret file) ==> ")
+            os.chmod(create_cred_file_path, 0o755)  # Make it executable
+            logging.info("\nCreateCredFile executed.\n")
+            vaultAdmin = input("Vault Username ==> ")
+            vaultPass = getpass.getpass("Vault Password (will be encrypted in secret file) ==> ")
             subprocess.run([create_cred_file_path, "user.cred", "Password", "-Username", vaultAdmin, "-Password", vaultPass, "-EntropyFile"])
             # Copy user.cred and user.cred.entropy to installation folder
             try:
@@ -1423,7 +1419,7 @@ def rpm_instal():
         else:
             logging.info(f"\nCreateCredFile not found in {install_folder}")
 
-        # Step 5: Install/Repair the RPM
+        # Step 5: Install the RPM
         try:
             if integration_mode == 'y' and float(psmp_version) <= 13.2:
                 integrated_rpm_dir = os.path.join(install_folder, "IntegratedMode")
