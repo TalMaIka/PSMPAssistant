@@ -18,6 +18,8 @@ from datetime import datetime
 import signal
 import getpass
 import glob
+import random
+import string
 
 # Logging to write to the dynamically named file and the console
 
@@ -1249,6 +1251,81 @@ def rpm_repair(psmp_version):
     except Exception as e:
         logging.error(f"An error occurred during the RPM repair process: {e}")
 
+# Generates a random password with a combination of uppercase, lowercase, numbers, and symbols.
+
+def generate_password(length=14):
+    
+    characters = string.ascii_letters + string.digits + string.punctuation
+    password = ''.join(random.choices(characters, k=length))
+    return password
+
+# Automating the Maintenance users configuration.
+def create_maintenance_users():
+    group_name = "PSMPMaintenanceUsers"
+    user_name = "proxymng"
+
+    # Generate a secure password
+    password = generate_password()
+    logging.info("\nMaintenance Users Creation Process")
+    try:
+        # Check if group exists
+        group_check = subprocess.run(["getent", "group", group_name], stdout=subprocess.PIPE)
+        if group_check.returncode == 0:
+            logging.info(f"Group '{group_name}' already exists. Skipping creation.")
+        else:
+            subprocess.run(["sudo", "groupadd", group_name], check=True)
+            logging.info(f"Group '{group_name}' created successfully.")
+
+        # Check if user exists
+        user_check = subprocess.run(["id", "-u", user_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if user_check.returncode == 0:
+            logging.info(f"User '{user_name}' already exists. Skipping creation.")
+        else:
+            encrypted_password = subprocess.check_output(
+                ["openssl", "passwd", "-1", password]
+            ).strip().decode()
+            subprocess.run(["sudo", "useradd", "-m", "-p", encrypted_password, "-s", "/bin/bash", user_name], check=True)
+            logging.info(f"User '{user_name}' created successfully.")
+            logging.info(f"Generated password for '{user_name}': {password}")
+
+        # Add user to group
+        subprocess.run(["sudo", "usermod", "-aG", group_name, user_name], check=True)
+        logging.info(f"User '{user_name}' added to group '{group_name}'.")
+
+        # Ask user for permission to add to sudoers file
+        add_to_sudoers = input(f"Do you want to add {user_name} as a sudoers? (y/n): ").strip().lower()
+        if add_to_sudoers == "y":
+            sudoers_path = f"/etc/sudoers.d/{user_name}"
+            with open(sudoers_path, "w") as sudoers_file:
+                # Add permission for user to execute 'sudo su -'
+                sudoers_file.write(f"{user_name} ALL=(ALL) NOPASSWD: /bin/su\n")
+            logging.info(f"User '{user_name}' added to sudoers file at '{sudoers_path}' with 'sudo su -' permission.")
+
+        # Update sshd_config
+        sshd_config_path = "/etc/ssh/sshd_config"
+        backup_file(sshd_config_path)
+        allow_groups_line = "AllowGroups PSMConnectUsers PSMPMaintenanceUsers"
+
+        with open(sshd_config_path, "r") as sshd_config:
+            lines = sshd_config.readlines()
+
+        # Check if line already exists
+        if any(allow_groups_line in line for line in lines):
+            logging.info(f"The line '{allow_groups_line}' is already present in '{sshd_config_path}'. Skipping update.")
+        else:
+            with open(sshd_config_path, "a") as sshd_config:  # Append only if not present
+                sshd_config.write(f"\n{allow_groups_line}\n")
+                logging.info(f"Updated '{sshd_config_path}' with AllowGroups directive.")
+
+        # Restart SSH service to apply changes
+        subprocess.run(["sudo", "systemctl", "restart", "sshd"], check=True)
+        logging.info("SSH service restarted successfully.")
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error during execution: {e}")
+    except PermissionError:
+        logging.error("This script requires administrative privileges. Please run it as sudo.")
+
 
 #RPM installation
 
@@ -1442,6 +1519,9 @@ def rpm_instal():
             logging.info(f"\Installing main RPM from: {rpm_file_path}")
             subprocess.run(["rpm", "-ivh", "--force", rpm_file_path])
             logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
+
+            # Calling the maintenance users creation
+            create_maintenance_users()
         except subprocess.CalledProcessError:
             logging.error("\n[-] Error during RPM file search or installation.")
             confirmation = input("Do you want to see the installation logs? (y/n): ")
