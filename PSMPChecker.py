@@ -83,18 +83,14 @@ def load_psmp_versions_json(file_path):
 
 def get_installed_psmp_version():
     try:
-        # Run the command to list installed RPMs related to CARK
         result = subprocess.check_output("rpm -qa | grep -i cark", shell=True, universal_newlines=True).strip()
         
         if result:
-            # Split the output into lines for multiple RPMs
             lines = result.splitlines()
             for line in lines:
-                # Skip lines containing "infra"
                 if "infra" in line.lower():
                     continue
                 
-                # Extract the version part after the first '-'
                 parts = line.split('-')
                 if len(parts) > 1:
                     version = parts[1]
@@ -112,7 +108,6 @@ def get_installed_psmp_version():
                         
                         return main_version
                     except ValueError:
-                        # Log if version parsing fails
                         logging.warning(f"Unable to parse version from: {version}")
         
         # Return None if no valid version is found
@@ -124,7 +119,6 @@ def get_installed_psmp_version():
             if arg == "install":
                  return None
     except Exception as e:
-        # Log unexpected errors
         logging.error(f"An error occurred: {e}")
         return None
 
@@ -142,7 +136,6 @@ def get_linux_distribution():
                         # Remove "Core" if present and extract major.minor version
                         content = content.replace("Core", "").strip()
                         version_parts = content.split("release")[1].strip().split(" ")
-                        # Extract only major.minor version (e.g., 7.9 from 7.9.2009)
                         major_minor_version = version_parts[0].split(".")[:2]
                         # Format the output for CentOS and RHEL
                         if "CentOS" in content:
@@ -217,18 +210,17 @@ def is_supported(psmp_versions, psmp_version, distro_name, distro_version):
 
 def is_integrated(psmp_version):
     try:
-        # Check if CARKpsmp and CARKpsmp-infra packages are installed
-        result = subprocess.run(['rpm', '-qa'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-        installed_packages = result.stdout.splitlines()
 
-        # Check if the PSMP version is 13.2 or higher
+        # Check if the PSMP version is 13.2 or higher (Last availableversion for non-integrated.)
         if float(psmp_version) > 13.2:
             return True
+
+        result = subprocess.run(['rpm', '-qa'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        installed_packages = result.stdout.splitlines()
 
         # Search for the required packages in the installed RPMs
         psmp_infra_installed = any(package.startswith("CARKpsmp-infra") for package in installed_packages)
 
-        # Return True if the infra package is installed
         if psmp_infra_installed:
             return True
 
@@ -289,11 +281,10 @@ def check_vault_comm(service_status):
     if service_status["psmpsrv"] == "[-] Inactive" or service_status["psmpsrv"] == "[-] Running but not communicating with Vault":
         logging.info("[-] The PSMP service is inactive.")
         # Communication check with vault server
-            # Check if 'nc' (Netcat) is installed
         if not is_nc_installed():
             logging.info("[!] Netcat (nc) is not installed. Please install it to proceed with the communication check.")
             sys.exit(1)
-        
+
         # Fetch the vault address from the /opt/CARKpsmp/vault.ini file
         vault_address = ""
         try:
@@ -304,6 +295,11 @@ def check_vault_comm(service_status):
                         break
         except FileNotFoundError:
             logging.info("[-] Vault.ini file not found.")
+            sys.exit(1)
+
+        # Check if the vault_address is empty
+        if len(vault_address) == 0:
+            logging.info("[-] Vault address is empty.")
             sys.exit(1)
 
         # If multiple IP addresses are found, select the first one
@@ -833,6 +829,7 @@ def search_secure_log(distro_name):
         r'Invalid user \S+ from \S+',
         r'Connection closed by \S+ port \d+ \[preauth\]',
         r'error: PAM: Authentication failure for \S+ from \S+',
+        r'debug3: mm_answer_keyallowed: publickey authentication test: RSA key is not allowed',
     ]
     
     # Compile the patterns into regular expressions
@@ -909,7 +906,7 @@ def print_latest_selinux_prevention_lines():
         logging.info("The 'sestatus' command is not found. SELinux may not be installed.")
     try:
         # Use a deque to keep the latest 10 matching lines
-        latest_lines = deque(maxlen=10)
+        latest_lines = deque(maxlen=5)
 
         # Open the log file in read mode
         with open(log_file_path, 'r') as log_file:
@@ -929,6 +926,24 @@ def print_latest_selinux_prevention_lines():
                     logging.info(line)
         else:
             logging.info("[+] SElinux is not preventing PSMP components.")
+        
+        # Check if SELinux is enforcing
+        if "SELinux status:                 enabled" in result.stdout and "Current mode:                   enforcing" in result.stdout:
+            logging.info("SELinux is in enforcing mode.")
+
+            # Prompt the user for agreement to temporarily disable SELinux
+            user_input = input("SELinux is enforcing. Would you like to temporarily disable SELinux for testing purposes until the next reboot? (y/n): ").strip().lower()
+            if user_input == 'y':
+                try:
+                    # Disable SELinux temporarily by setting it to permissive
+                    logging.info("Disabling SELinux temporarily (setenforce 0)...")
+                    subprocess.run(['setenforce', '0'], check=True)
+                    logging.info("SELinux has been temporarily disabled. It will revert to enforcing mode after the next reboot.")
+                except subprocess.CalledProcessError as e:
+                    logging.error(f"Failed to disable SELinux: {e}")
+            else:
+                logging.info("SELinux will remain in enforcing mode.")
+
 
     except FileNotFoundError:
         logging.info(f"Error: The file '{log_file_path}' does not exist.")
@@ -1213,7 +1228,7 @@ def rpm_repair(psmp_version):
         else:
             logging.info(f"\nCreateCredFile not found in {install_folder}")
 
-        # Step 5: Repair the RPM
+        # Step 6: Repair the RPM
         try:
             if is_integrated(psmp_version) and float(psmp_version) <= 13.2:
                 integrated_rpm_dir = os.path.join(install_folder, "IntegratedMode")
@@ -1250,81 +1265,6 @@ def rpm_repair(psmp_version):
 
     except Exception as e:
         logging.error(f"An error occurred during the RPM repair process: {e}")
-
-# Generates a random password with a combination of uppercase, lowercase, numbers, and symbols.
-
-def generate_password(length=14):
-    
-    characters = string.ascii_letters + string.digits + string.punctuation
-    password = ''.join(random.choices(characters, k=length))
-    return password
-
-# Automating the Maintenance users configuration.
-def create_maintenance_users():
-    group_name = "PSMPMaintenanceUsers"
-    user_name = "proxymng"
-
-    # Generate a secure password
-    password = generate_password()
-    logging.info("\nMaintenance Users Creation Process")
-    try:
-        # Check if group exists
-        group_check = subprocess.run(["getent", "group", group_name], stdout=subprocess.PIPE)
-        if group_check.returncode == 0:
-            logging.info(f"Group '{group_name}' already exists. Skipping creation.")
-        else:
-            subprocess.run(["sudo", "groupadd", group_name], check=True)
-            logging.info(f"Group '{group_name}' created successfully.")
-
-        # Check if user exists
-        user_check = subprocess.run(["id", "-u", user_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if user_check.returncode == 0:
-            logging.info(f"User '{user_name}' already exists. Skipping creation.")
-        else:
-            encrypted_password = subprocess.check_output(
-                ["openssl", "passwd", "-1", password]
-            ).strip().decode()
-            subprocess.run(["sudo", "useradd", "-m", "-p", encrypted_password, "-s", "/bin/bash", user_name], check=True)
-            logging.info(f"User '{user_name}' created successfully.")
-            logging.info(f"Generated password for '{user_name}': {password}")
-
-        # Add user to group
-        subprocess.run(["sudo", "usermod", "-aG", group_name, user_name], check=True)
-        logging.info(f"User '{user_name}' added to group '{group_name}'.")
-
-        # Ask user for permission to add to sudoers file
-        add_to_sudoers = input(f"Do you want to add {user_name} as a sudoers? (y/n): ").strip().lower()
-        if add_to_sudoers == "y":
-            sudoers_path = f"/etc/sudoers.d/{user_name}"
-            with open(sudoers_path, "w") as sudoers_file:
-                # Add permission for user to execute 'sudo su -'
-                sudoers_file.write(f"{user_name} ALL=(ALL) NOPASSWD: /bin/su\n")
-            logging.info(f"User '{user_name}' added to sudoers file at '{sudoers_path}' with 'sudo su -' permission.")
-
-        # Update sshd_config
-        sshd_config_path = "/etc/ssh/sshd_config"
-        backup_file(sshd_config_path)
-        allow_groups_line = "AllowGroups PSMConnectUsers PSMPMaintenanceUsers"
-
-        with open(sshd_config_path, "r") as sshd_config:
-            lines = sshd_config.readlines()
-
-        # Check if line already exists
-        if any(allow_groups_line in line for line in lines):
-            logging.info(f"The line '{allow_groups_line}' is already present in '{sshd_config_path}'. Skipping update.")
-        else:
-            with open(sshd_config_path, "a") as sshd_config:  # Append only if not present
-                sshd_config.write(f"\n{allow_groups_line}\n")
-                logging.info(f"Updated '{sshd_config_path}' with AllowGroups directive.")
-
-        # Restart SSH service to apply changes
-        subprocess.run(["sudo", "systemctl", "restart", "sshd"], check=True)
-        logging.info("SSH service restarted successfully.")
-
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Error during execution: {e}")
-    except PermissionError:
-        logging.error("This script requires administrative privileges. Please run it as sudo.")
 
 
 #RPM installation
@@ -1496,7 +1436,7 @@ def rpm_instal():
         else:
             logging.info(f"\nCreateCredFile not found in {install_folder}")
 
-        # Step 5: Install the RPM
+        # Step 6: Install the RPM
         try:
             if integration_mode == 'y' and float(psmp_version) <= 13.2:
                 integrated_rpm_dir = os.path.join(install_folder, "IntegratedMode")
@@ -1520,8 +1460,6 @@ def rpm_instal():
             subprocess.run(["rpm", "-ivh", "--force", rpm_file_path])
             logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
 
-            # Calling the maintenance users creation
-            create_maintenance_users()
         except subprocess.CalledProcessError:
             logging.error("\n[-] Error during RPM file search or installation.")
             confirmation = input("Do you want to see the installation logs? (y/n): ")
