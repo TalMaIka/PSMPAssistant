@@ -1120,40 +1120,32 @@ def rpm_repair(psmp_version):
                 logging.info(f"Fetched vault IP: {vault_ip}")
                 user_ip = input(f"Is the vault IP {vault_ip} correct? (y/n): ").strip().lower()
                 if user_ip != 'y':
-                    new_ip = input("Please enter the vault IP: ").strip()
-                    while len(new_ip) < 5:
-                        new_ip = input("Please enter a valid vault IP: ").strip()
-                    # Update the vault.ini file
-                    for i, line in enumerate(vault_ini_content):
-                        if line.startswith("ADDRESS="):
-                            vault_ini_content[i] = f"ADDRESS={new_ip}\n"
-                            break
-
-                    with open(vault_ini_path, "w") as f:
-                        f.writelines(vault_ini_content)
-                    logging.info(f"Updated vault IP to {new_ip} in vault.ini.")
-                else:
-                    for i, line in enumerate(vault_ini_content):
-                        if line.startswith("ADDRESS="):
-                            vault_ini_content[i] = f"ADDRESS={vault_ip}\n"
-                            break
-
-                    with open(vault_ini_path, "w") as f:
-                        f.writelines(vault_ini_content)
-            else:
-                logging.info("No vault IP address found in vault.ini.")
-                new_ip = input("Please enter the vault IP: ").strip()
-                while len(new_ip) < 5:
-                    new_ip = input("Please enter a valid vault IP: ").strip()
+                    vault_ip = input("Please enter the vault IP: ").strip()
+                    while len(vault_ip) < 5:
+                        vault_ip = input("Please enter a valid vault IP: ").strip()
                 # Update the vault.ini file
                 for i, line in enumerate(vault_ini_content):
                     if line.startswith("ADDRESS="):
-                        vault_ini_content[i] = f"ADDRESS={new_ip}\n"
+                        vault_ini_content[i] = f"ADDRESS={vault_ip}\n"
+                        break
+                        
+                with open(vault_ini_path, "w") as f:
+                    f.writelines(vault_ini_content)
+                logging.info(f"Updated vault IP to {vault_ip} in vault.ini.")
+            else:
+                logging.info("No vault IP address found in vault.ini.")
+                vault_ip = input("Please enter the vault IP: ").strip()
+                while len(vault_ip) < 5:
+                    vault_ip = input("Please enter a valid vault IP: ").strip()
+                # Update the vault.ini file
+                for i, line in enumerate(vault_ini_content):
+                    if line.startswith("ADDRESS="):
+                        vault_ini_content[i] = f"ADDRESS={vault_ip}\n"
                         break
 
                 with open(vault_ini_path, "w") as f:
                     f.writelines(vault_ini_content)
-                logging.info(f"Updated vault IP to {new_ip} in vault.ini.")
+                logging.info(f"Updated vault IP to {vault_ip} in vault.ini.")
         else:
             logging.info(f"vault.ini not found in {install_folder}")
             sys.exit(1)
@@ -1587,40 +1579,32 @@ def rpm_upgrade(psmp_version):
                 logging.info(f"Fetched vault IP: {vault_ip}")
                 user_ip = input(f"Is the vault IP {vault_ip} correct? (y/n): ").strip().lower()
                 if user_ip != 'y':
-                    new_ip = input("Please enter the vault IP: ").strip()
-                    while len(new_ip) < 5:
-                        new_ip = input("Please enter a valid vault IP: ").strip()
-                    # Update the vault.ini file
-                    for i, line in enumerate(vault_ini_content):
-                        if line.startswith("ADDRESS="):
-                            vault_ini_content[i] = f"ADDRESS={new_ip}\n"
-                            break
-
-                    with open(vault_ini_path, "w") as f:
-                        f.writelines(vault_ini_content)
-                    logging.info(f"Updated vault IP to {new_ip} in vault.ini.")
-                else:
-                    for i, line in enumerate(vault_ini_content):
-                        if line.startswith("ADDRESS="):
-                            vault_ini_content[i] = f"ADDRESS={vault_ip}\n"
-                            break
-
-                    with open(vault_ini_path, "w") as f:
-                        f.writelines(vault_ini_content)
-            else:
-                logging.info("No vault IP address found in vault.ini.")
-                new_ip = input("Please enter the vault IP: ").strip()
-                while len(new_ip) < 5:
-                    new_ip = input("Please enter a valid vault IP: ").strip()
+                    vault_ip = input("Please enter the vault IP: ").strip()
+                    while len(vault_ip) < 5:
+                        vault_ip = input("Please enter a valid vault IP: ").strip()
                 # Update the vault.ini file
                 for i, line in enumerate(vault_ini_content):
                     if line.startswith("ADDRESS="):
-                        vault_ini_content[i] = f"ADDRESS={new_ip}\n"
+                        vault_ini_content[i] = f"ADDRESS={vault_ip}\n"
+                        break
+                        
+                with open(vault_ini_path, "w") as f:
+                    f.writelines(vault_ini_content)
+                logging.info(f"Updated vault IP to {vault_ip} in vault.ini.")
+            else:
+                logging.info("No vault IP address found in vault.ini.")
+                vault_ip = input("Please enter the vault IP: ").strip()
+                while len(vault_ip) < 5:
+                    vault_ip = input("Please enter a valid vault IP: ").strip()
+                # Update the vault.ini file
+                for i, line in enumerate(vault_ini_content):
+                    if line.startswith("ADDRESS="):
+                        vault_ini_content[i] = f"ADDRESS={vault_ip}\n"
                         break
 
                 with open(vault_ini_path, "w") as f:
                     f.writelines(vault_ini_content)
-                logging.info(f"Updated vault IP to {new_ip} in vault.ini.")
+                logging.info(f"Updated vault IP to {vault_ip} in vault.ini.")
         else:
             logging.info(f"vault.ini not found in {install_folder}")
             sys.exit(1)
