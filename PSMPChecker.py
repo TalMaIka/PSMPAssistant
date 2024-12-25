@@ -1506,7 +1506,6 @@ def rpm_upgrade(psmp_version):
     logging.info("\nPSMP RPM Upgrade:")
     logging.info(f"Current PSMP Version Detected: {psmp_version}")
     sleep(2)
-
     try:
         # Step 1: Manually search for RPM files
         rpm_files = []
@@ -1557,11 +1556,19 @@ def rpm_upgrade(psmp_version):
         psmp_version = re.search(r"CARKpsmp-(\d+\.\d)", rpm_location)
         if psmp_version:
             psmp_version = psmp_version.group(1)
-            logging.info(f"PSMP version detected: {psmp_version}")
+            logging.info(f"PSMP upgrade version detected: {psmp_version}")
         else:
             logging.info("PSMP version not found in the RPM file name.")
             return
-
+        # Get the Linux distribution and version
+        distro_name, distro_version = get_linux_distribution()
+        # Check compatibility
+        if is_supported(psmp_versions, psmp_version, distro_name, distro_version):
+            logging.info(f"PSMP Version {psmp_version} Supports {distro_name} {distro_version}")
+        else:
+            logging.info(f"PSMP Version {psmp_version} Does Not Support {distro_name} {distro_version}")
+            logging.info(f"Please refer to the PSMP documentation for supported versions.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/Content/PAS%20SysReq/System%20Requirements%20-%20PSMP.htm")
+            sys.exit(1)
         # Step 3: Check and modify vault.ini file
         vault_ini_path = os.path.join(install_folder, "/etc/opt/CARKpsmp/vault/vault.ini") # Fetching the current vault.ini
         if os.path.exists(vault_ini_path):
