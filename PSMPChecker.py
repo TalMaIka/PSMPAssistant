@@ -894,8 +894,6 @@ def print_latest_selinux_prevention_lines():
     try:
         # Run the 'sestatus' command to check SELinux status
         result = subprocess.run(['sestatus'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
-        
-        # Print the output of 'sestatus' if SELinux is installed
         logging.info(result.stdout)
         
     except subprocess.CalledProcessError:
@@ -906,14 +904,13 @@ def print_latest_selinux_prevention_lines():
         # Use a deque to keep the latest 10 matching lines
         latest_lines = deque(maxlen=5)
 
-        # Open the log file in read mode
         with open(log_file_path, 'r') as log_file:
             for line in log_file:
                 # Check if the line contains the search string
                 if search_string in line:
                     # Add the line to the deque
                     latest_lines.append(line.strip())
-        #No lines found
+        
         if len(latest_lines) > 0:
             # Print each line in the deque on a new line
             for line in latest_lines:
@@ -1467,7 +1464,7 @@ def rpm_instal():
                 if not integrated_rpm_files:
                     logging.warning("No IntegratedMode RPM file found.")
                 else:
-                    integrated_rpm_path = integrated_rpm_files[0]  # Repair the first RPM found
+                    integrated_rpm_path = integrated_rpm_files[0]  # Install the first RPM found
                     logging.info(f"\Installing IntegratedMode RPM from: {integrated_rpm_path}")
                     subprocess.run(["rpm", "-ivh", "--force", integrated_rpm_path])
                     logging.info(f"\n[+] IntegratedMode RPM {integrated_rpm_path} installed successfully.")
@@ -1499,7 +1496,7 @@ def extract_version(rpm):
         return tuple(map(int, match.groups()))  # Convert all groups to integers
     return (0, 0, 0, 0)  # Default version for invalid formats
 
-# Automates the repair of the RPM for the specified PSMP version.
+# Automates the upgrade of the newer RPM.
 
 def rpm_upgrade(psmp_version):
     logging.info(f"\nPSMP documentation for upgrade.\n https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/upgrading-the-psmp.htm")
@@ -1702,7 +1699,7 @@ def rpm_upgrade(psmp_version):
         else:
             logging.info(f"\nCreateCredFile not found in {install_folder}")
 
-        # Step 6: Repair the RPM
+        # Step 6: Upgrade the RPM
         try:
             if not is_integrated(psmp_version) and extract_version(selected_version) > 13.3:
                 logging.info("Selected PSMP version is greater than 13.3 and installed mode is non-integrated.\n Since non-integrated mode is deprecated in versions 13.2+, please proceed with the RPM upgrade to integrated doc.")
@@ -1718,13 +1715,13 @@ def rpm_upgrade(psmp_version):
                 if not integrated_rpm_files:
                     logging.warning("No IntegratedMode RPM file found.")
                 else:
-                    integrated_rpm_path = integrated_rpm_files[0]  # Repair the first RPM found
+                    integrated_rpm_path = integrated_rpm_files[0]  # Upgrade the first RPM found
                     logging.info(f"\nRepairing IntegratedMode RPM from: {integrated_rpm_path}")
                     subprocess.run(["rpm", "-Uvh", "--force", integrated_rpm_path])
                     
                     logging.info(f"\n[+] IntegratedMode RPM {integrated_rpm_path} installed successfully.")
             
-            # Proceed with the main RPM repair
+            # Proceed with the main RPM Upgrade
             rpm_file_path = os.path.join(install_folder, matching_rpms[0])
             logging.info(f"\nRepairing main RPM from: {rpm_file_path}")
             subprocess.run(["rpm", "-Uvh", "--force", rpm_file_path])
