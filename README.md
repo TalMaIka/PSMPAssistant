@@ -78,7 +78,7 @@ python3 PSMPChecker.py restore-sshd
 ### Service Monitoring
 - Checks and verifies the status of PSMP and SSHD services.
  + Checks communication between PSMP and Vault server, including options to update the Vault IP address if needed.
- + Disbale NSCD - https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/before-installing-psmp.htm#DisableNSCD
+ + Disable NSCD - https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/before-installing-psmp.htm#DisableNSCD
 
 ### OpenSSH Version Check
 - Verifies if the installed OpenSSH version meets the required version.
@@ -91,19 +91,27 @@ python3 PSMPChecker.py restore-sshd
  + https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20sysreq/system%20requirements%20-%20psmp.htm
 
 ### NSswitch Configuration Check
-- Validates the NSswitch configuration based on PSMP version.
+- Validates the NSswitch configuration based on the PSMP version.
  + https://community.cyberark.com/s/article/PSM-SSH-Proxy-Failed-to-start
 
 ### SSHD Configuration Check
 - Ensures proper configuration of the SSHD service to allow proper PSMP flow.
 
 ### Logs Collection
-- Collects logs from specified locations and creates a zip file for analysis.
+- Collect logs from specified locations and create a zip file for analysis.
  + Checks if the SSHD debug level is set to DEBUG3.
  + https://community.cyberark.com/s/article/00003368
 
-### RPM Installation Repair
-- Automates the pre-installation steps by locating the RPM folder *matching* the PSMP installed version followed by executing the repair.
+### RPM Installation - Repair
+- Automates the pre-installation steps by locating the RPM folder *matching* the PSMP installed version and executing the repair.
+ + https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/before-installing-psmp.htm
+
+### RPM Installation - Upgrade
+-  Simplifies upgrading to the latest available PSMP version.
+ + https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/upgrading-the-psmp.htm
+
+### RPM Installation - Install
+-  Automates the process of installing the PSMP package.
  + https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/before-installing-psmp.htm
 
 ### SSHD Configuration Restoration
