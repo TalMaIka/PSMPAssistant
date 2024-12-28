@@ -1,4 +1,4 @@
-# Copyright: © 2024 CyberArk Community, Made By Tal.M
+# Copyright: © 2025 CyberArk Community, Developed By Tal.M
 # Version: 1.1
 # Description: This tool performs a series of checks and operations related to CyberArk's Privileged Session Manager for SSH Proxy (PSMP) and SSHD configuration on Linux systems.
 
@@ -67,7 +67,7 @@ def print_logo():
 |  _  |   __|     |  _  |___|     | |_ ___ ___| |_ ___ ___ 
 |   __|__   | | | |   __|___|   --|   | -_|  _| '_| -_|  _|
 |__|  |_____|_|_|_|__|      |_____|_|_|___|___|_,_|___|_|  
-      © 2024 CyberArk Community, Made By Tal.M"""
+      © 2024 CyberArk Community, Developed By Tal.M"""
     logging.info(logo)
 
 
@@ -98,11 +98,9 @@ def get_installed_psmp_version():
                         major, minor, *_ = version.split('.')
                         main_version = f"{major}.{minor}"
                         
-                        # Map specific version formats as needed
-                        if main_version == "12.06":
-                            main_version = "12.6"
-                        elif main_version == "12.02":
-                            main_version = "12.2"
+                        # Map version 12.0X to 12.X format
+                        if main_version.startswith("12.0"):
+                            main_version = main_version.replace("12.0", "12.")
                         
                         return main_version
                     except ValueError:
@@ -307,11 +305,12 @@ def check_vault_comm(service_status):
         # Ask client for confirmation on the fetched Vault IP address
         print(f"Fetched Vault IP: {vault_ip}")
         client_confirmation = input(f"Does the fetched Vault IP is correct: {vault_ip}? (y/n): ")
-        if client_confirmation.lower() != "y":
+        if client_confirmation.lower() != "y" and client_confirmation.lower() != "yes":
             # Allow the user to change the Vault IP address
-            new_vault_ip = input(f"Please enter the new Vault IP address (current: {vault_ip}): ").strip()
-            if new_vault_ip:
-                vault_ip = new_vault_ip
+            vault_ip = input("Please enter the correct vault IP: ").strip()
+            while len(vault_ip) < 5:
+                vault_ip = input("Please enter a valid vault IP: ").strip()
+            if vault_ip:
                 # Update the vault.ini with the new address
                 try:
                     with open("/etc/opt/CARKpsmp/vault/vault.ini", "r") as file:
@@ -322,7 +321,7 @@ def check_vault_comm(service_status):
                                 file.write(f"ADDRESS={vault_ip}\n")
                             else:
                                 file.write(line)
-                    logging.info(f"Vault IP address updated to {vault_ip} in vault.ini.")
+                    logging.info(f"Vault IP address updated in vault.ini.")
                 except FileNotFoundError:
                     logging.info("[-] Vault.ini file not found.")
                     sys.exit(1)
@@ -335,13 +334,12 @@ def check_vault_comm(service_status):
         try:
             subprocess.run(["nc", "-zv", vault_ip, "1858"], check=True)
             logging.info("[+] Communication to the vault is successful.")
-            # Optionally restart PSMP service after communication check
+
             restart_confirmation = input("Restart PSMP service? (y/n): ")
-            if restart_confirmation.lower() == "y":
+            if restart_confirmation.lower() == "y" or restart_confirmation.lower() == "yes":
                 logging.info("[+] Restarting PSMP service...")
                 try:
-                    subprocess.run(["systemctl", "restart", "psmpsrv"], check=True)
-                    sleep(15)
+                    subprocess.run(["systemctl", "restart", "psmpsrv"], check=True, timeout=30)
                     service_status = check_services_status()
                     if service_status["psmpsrv"] == "[-] Inactive" or service_status["psmpsrv"] == "[-] Running but not communicating with Vault":
                         logging.info("[-] PSMP service issue.")
@@ -413,7 +411,7 @@ def restore_sshd_config_from_backup():
     try:
         # Ask for confirmation from the user
         confirmation = input("Do you want to restore sshd_config from backup? (y/n): ")
-        if confirmation.lower() != "y":
+        if confirmation.lower() != "y" and confirmation.lower() != "yes":
             logging.info("Restoration aborted.")
             return
         if backup_file(current_sshd_config_path):
@@ -466,7 +464,7 @@ def check_sshd_config():
             logging.info("PSMP authentication block not found.")
             # Ask customer if they want to add the PSMP authentication block
             add_block_confirmation = input("Would you like to add the PSMP authentication block to the sshd_config file? (y/n): ")
-            if add_block_confirmation.lower() == "y" and backup_file(sshd_config_path):
+            if (add_block_confirmation.lower() == "y" or add_block_confirmation.lower() == "yes") and backup_file(sshd_config_path):
                 try:
                     with open(sshd_config_path, "a") as file:
                         # Append the PSMP Authentication Configuration Block
@@ -498,7 +496,7 @@ def check_sshd_config():
         # If changes were made, ask the user to restart the sshd service
         if changes_made:
             restart_confirmation = input("Changes were made to the sshd_config. Would you like to restart the sshd service for the changes to take effect? (y/n): ")
-            if restart_confirmation.lower() == "y":
+            if restart_confirmation.lower() == "y" or restart_confirmation.lower() == "yes":
                 try:
                     subprocess.run(["systemctl", "restart", "sshd"], check=True)
                     logging.info("[+] SSHD service restarted successfully.")
@@ -564,7 +562,7 @@ def logs_collect():
     print("\nDocs Link https://docs.cyberark.com/pam-self-hosted/latest/en/Content/PAS%20INST/The-PSMP-Environment.htm")
     print("Do you wish to continue? (y/n): ")
     choice = input().lower()
-    if choice != 'y':
+    if choice.lower() != 'y' and choice.lower() != "yes":
         print("Logs collection aborted.")
         return
 
@@ -669,7 +667,7 @@ def check_debug_level():
                 print("[+] Correct SSHD LogLevel found in sshd_config")
             elif stripped_line == "LogLevel INFO":
                 confirmation = input("The LogLevel for 'sshd' is set to INFO. Would you like to elevate it to DEBUG3? (y/n): ").strip().lower()
-                if confirmation == "y" and backup_file(ssh_config_path):
+                if (confirmation.lower() == "y" or confirmation.lower() == "yes")and backup_file(ssh_config_path):
                     lines[i] = f"LogLevel {desired_log_level}\n"
                     changes_made = True
                 else:
@@ -680,7 +678,7 @@ def check_debug_level():
         # Check if LogLevel is commented out
         if stripped_line.startswith("#") and "LogLevel" in stripped_line:
             confirmation = input("The LogLevel for 'sshd' is commented out. Would you like to uncomment and set it to DEBUG3? (y/n): ").strip().lower()
-            if confirmation == "y" and backup_file(ssh_config_path):
+            if (confirmation.lower() == "y" or confirmation.lower() == "yes") and backup_file(ssh_config_path):
                 lines[i] = f"LogLevel {desired_log_level}\n"
                 changes_made = True
             else:
@@ -694,7 +692,7 @@ def check_debug_level():
             file.writelines(lines)
         print("LogLevel updated to DEBUG3 in sshd_config.")
         confirmation = input("\nDo you want to restart SSHD for the changes to take effect? \nWill not affect ongoing sessions! (y/n): ")
-        if confirmation.lower() == "y":
+        if confirmation.lower() == "y" or confirmation.lower() == "yes":
             try:
                 subprocess.run(["systemctl", "restart", "sshd"], check=True)
                 print("SSHD service restarted successfully.")
@@ -902,7 +900,7 @@ def print_latest_selinux_prevention_lines():
         logging.info("The 'sestatus' command is not found. SELinux may not be installed.")
     try:
         # Use a deque to keep the latest 10 matching lines
-        latest_lines = deque(maxlen=5)
+        latest_lines = deque(maxlen=2)
 
         with open(log_file_path, 'r') as log_file:
             for line in log_file:
@@ -928,7 +926,7 @@ def print_latest_selinux_prevention_lines():
 
             # Prompt the user for agreement to temporarily disable SELinux
             user_input = input("SELinux is enforcing. Would you like to temporarily disable SELinux for testing purposes until the next reboot? (y/n): ").strip().lower()
-            if user_input == 'y':
+            if user_input.lower() == 'y' or user_input.lower() == "yes":
                 try:
                     # Disable SELinux temporarily by setting it to permissive
                     logging.info("Disabling SELinux temporarily (setenforce 0)...")
@@ -955,7 +953,7 @@ def disable_nscd_service():
         if result.stdout.strip() == "active":
             logging.info("\nNSCD service is active and should be diabled\nhttps://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/before-installing-psmp.htm?tocpath=Installer%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____1#DisableNSCD")
             confirmation = input("\nDo you allow to terminate and disable NSCD? (y/n): ")
-            if confirmation == "y":
+            if confirmation.lower() == "y" or confirmation.lower() == "yes":
                 # Stop and disable the nscd service
                 subprocess.run(["systemctl", "stop", "nscd"], check=True)
                 subprocess.run(["systemctl", "disable", "nscd"], check=True)
@@ -970,7 +968,7 @@ def disable_nscd_service():
 def verify_nsswitch_conf(psmp_version):
 
     nsswitch_path = "/etc/nsswitch.conf"
-    logging.info("\nnsswitch.conf Configuration Check:")
+    logging.info("\nConfiguration Check for nsswitch.conf:")
     sleep(2)
     try:
         psmp_version = float(psmp_version)
@@ -1032,7 +1030,7 @@ def verify_nsswitch_conf(psmp_version):
             logging.info(f" - {key}: found '{actual}', expected '{expected}'")
         
         confirmation = input("Would you like to update /etc/nsswitch.conf to the expected configuration? (y/n): ")
-        if confirmation.lower() == "y" and backup_file(nsswitch_path):
+        if (confirmation.lower() == "y" or confirmation.lower() == "yes") and backup_file(nsswitch_path):
             sleep(2)
             # Update the file with the correct configuration
             try:
@@ -1057,7 +1055,7 @@ def verify_nsswitch_conf(psmp_version):
         logging.info("nsswitch.conf is correctly configured.")
         return False
 
-# Automates the repair of the RPM for the specified PSMP version.
+# Automates RPM repair for the specified PSMP version.
 
 def rpm_repair(psmp_version):
     logging.info(f"\nPSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
@@ -1090,7 +1088,7 @@ def rpm_repair(psmp_version):
 
         # Validate installation folder
         install_folder_input = input(f"Is the installation folder {install_folder} correct? (y/n): ").strip().lower()
-        if install_folder_input != 'y':
+        if install_folder_input.lower() != 'y' and install_folder_input.lower() != "yes":
             logging.info("Installation folder not confirmed by user. Exiting.")
             return
 
@@ -1116,7 +1114,7 @@ def rpm_repair(psmp_version):
             if vault_ip:
                 logging.info(f"Fetched vault IP: {vault_ip}")
                 user_ip = input(f"Is the vault IP {vault_ip} correct? (y/n): ").strip().lower()
-                if user_ip != 'y':
+                if user_ip.lower() != 'y' and user_ip.lower() != "yes":
                     vault_ip = input("Please enter the vault IP: ").strip()
                     while len(vault_ip) < 5:
                         vault_ip = input("Please enter a valid vault IP: ").strip()
@@ -1163,7 +1161,7 @@ def rpm_repair(psmp_version):
 
             # Accept CyberArk EULA
             accept_eula = input("Do you accept the CyberArk EULA? (y/n): ").strip().lower()
-            if accept_eula == 'y':
+            if accept_eula.lower() == 'y' or accept_eula.lower() == "yes":
                 for i, line in enumerate(psmpparms_content):
                     if line.startswith("AcceptCyberArkEULA="):
                         psmpparms_content[i] = "AcceptCyberArkEULA=Yes\n"
@@ -1176,7 +1174,7 @@ def rpm_repair(psmp_version):
 
             # Update CreateVaultEnvironment and EnableADBridge
             skip_vault_env = input("Do you want to skip Vault environment creation? (y/n): ").strip().lower()
-            if skip_vault_env == 'y':
+            if skip_vault_env.lower() == 'y' or skip_vault_env.lower() == "yes":
                 for i, line in enumerate(psmpparms_content):
                     if line.startswith("#CreateVaultEnvironment="):
                         psmpparms_content[i] = "CreateVaultEnvironment=No\n"
@@ -1197,7 +1195,7 @@ def rpm_repair(psmp_version):
                     break
 
             disable_adbridge = input("Do you want to disable ADBridge? (y/n): ").strip().lower()
-            if disable_adbridge == 'y':
+            if disable_adbridge.lower() == 'y' or disable_adbridge.lower() == "yes":
                 for i, line in enumerate(psmpparms_content):
                     if line.startswith("#EnableADBridge="):
                         psmpparms_content[i] = "EnableADBridge=No\n"
@@ -1260,7 +1258,7 @@ def rpm_repair(psmp_version):
         except subprocess.CalledProcessError:
             logging.error("\n[-] Error during RPM file search or installation.")
             confirmation = input("Do you want to see the installation logs? (y/n): ")
-            if confirmation.lower() == "y":
+            if confirmation.lower() == "y" or confirmation.lower() == "yes":
                 try:
                     with open("/var/tmp/psmp_install.log", "r") as f:
                         for line in f:
@@ -1272,7 +1270,7 @@ def rpm_repair(psmp_version):
         logging.error(f"An error occurred during the RPM repair process: {e}")
 
 
-#RPM installation
+# Automates RPM installation
 
 def rpm_instal():
     logging.info(f"\nPSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
@@ -1310,7 +1308,7 @@ def rpm_instal():
 
         # Validate installation folder
         install_folder_input = input(f"Is the installation folder {install_folder} correct? (y/n): ").strip().lower()
-        if install_folder_input != 'y':
+        if install_folder_input.lower() != 'y' and install_folder_input.lower() != "yes":
             logging.info("Installation folder not confirmed by user. Exiting.")
             return
 
@@ -1340,7 +1338,7 @@ def rpm_instal():
             if vault_ip:
                 logging.info(f"Fetched vault IP: {vault_ip}")
                 user_ip = input(f"Is the vault IP {vault_ip} correct? (y/n): ").strip().lower()
-                if user_ip != 'y':
+                if user_ip.lower() != 'y' and user_ip.lower() != "yes":
                     new_ip = input("Please enter the vault IP: ").strip()
                     while len(new_ip) < 5:
                         new_ip = input("Please enter a valid vault IP: ").strip()
@@ -1387,7 +1385,7 @@ def rpm_instal():
 
             # Accept CyberArk EULA
             accept_eula = input("Do you accept the CyberArk EULA? (y/n): ").strip().lower()
-            if accept_eula == 'y':
+            if accept_eula.lower() == 'y' or accept_eula.lower() == "yes":
                 for i, line in enumerate(psmpparms_content):
                     if line.startswith("AcceptCyberArkEULA="):
                         psmpparms_content[i] = "AcceptCyberArkEULA=Yes\n"
@@ -1406,7 +1404,7 @@ def rpm_instal():
             # Update Integration state
             for i, line in enumerate(psmpparms_content):
                 if line.lower().startswith("installcyberarksshd="):
-                    if float(psmp_version) > 13.2 or integration_mode == 'y':
+                    if float(psmp_version) > 13.2 or integration_mode.lower() == 'y' or integration_mode.lower() == "yes":
                         psmpparms_content[i] = "InstallCyberArkSSHD=Integrated\n"
                         logging.info("PSMP set to integrated.")
                     else:
@@ -1415,7 +1413,7 @@ def rpm_instal():
                     break
 
             disable_adbridge = input("Do you want to disable ADBridge? (y/n): ").strip().lower()
-            if disable_adbridge == 'y':
+            if disable_adbridge.lower() == 'y' or disable_adbridge.lower() == "yes":
                 for i, line in enumerate(psmpparms_content):
                     if line.startswith("#EnableADBridge="):
                         psmpparms_content[i] = "EnableADBridge=No\n"
@@ -1453,7 +1451,7 @@ def rpm_instal():
 
         # Step 6: Install the RPM
         try:
-            if integration_mode == 'y' and float(psmp_version) <= 13.2:
+            if (integration_mode.lower() == 'y' or integration_mode.lower() == "yes") and float(psmp_version) <= 13.2:
                 integrated_rpm_dir = os.path.join(install_folder, "IntegratedMode")
                 integrated_rpm_files = [
                     os.path.join(integrated_rpm_dir, rpm)
@@ -1478,7 +1476,7 @@ def rpm_instal():
         except subprocess.CalledProcessError:
             logging.error("\n[-] Error during RPM file search or installation.")
             confirmation = input("Do you want to see the installation logs? (y/n): ")
-            if confirmation.lower() == "y":
+            if confirmation.lower() == "y" or confirmation.lower() == "yes":
                 try:
                     with open("/var/tmp/psmp_install.log", "r") as f:
                         for line in f:
@@ -1496,7 +1494,7 @@ def extract_version(rpm):
         return tuple(map(int, match.groups()))  # Convert all groups to integers
     return (0, 0, 0, 0)  # Default version for invalid formats
 
-# Automates the upgrade of the newer RPM.
+# Automates RPM upgrade.
 
 def rpm_upgrade(psmp_version):
     logging.info(f"\nPSMP documentation for upgrade.\n https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/upgrading-the-psmp.htm")
@@ -1545,7 +1543,7 @@ def rpm_upgrade(psmp_version):
 
         # Validate installation folder
         install_folder_input = input(f"Is the installation folder {install_folder} correct? (y/n): ").strip().lower()
-        if install_folder_input != 'y':
+        if install_folder_input.lower() != 'y' and install_folder_input.lower() != "yes":
             logging.info("Installation folder not confirmed by user. Exiting.")
             return
 
@@ -1582,7 +1580,7 @@ def rpm_upgrade(psmp_version):
             if vault_ip:
                 logging.info(f"Fetched vault IP: {vault_ip}")
                 user_ip = input(f"Is the vault IP {vault_ip} correct? (y/n): ").strip().lower()
-                if user_ip != 'y':
+                if user_ip.lower() != 'y' and user_ip.lower() != "yes":
                     vault_ip = input("Please enter the vault IP: ").strip()
                     while len(vault_ip) < 5:
                         vault_ip = input("Please enter a valid vault IP: ").strip()
@@ -1629,7 +1627,7 @@ def rpm_upgrade(psmp_version):
 
             # Accept CyberArk EULA
             accept_eula = input("Do you accept the CyberArk EULA? (y/n): ").strip().lower()
-            if accept_eula == 'y':
+            if accept_eula.lower() == 'y' or accept_eula.lower() == "yes":
                 for i, line in enumerate(psmpparms_content):
                     if line.startswith("AcceptCyberArkEULA="):
                         psmpparms_content[i] = "AcceptCyberArkEULA=Yes\n"
@@ -1642,7 +1640,7 @@ def rpm_upgrade(psmp_version):
 
             # Update CreateVaultEnvironment and EnableADBridge
             skip_vault_env = input("Do you want to skip Vault environment creation? (y/n): ").strip().lower()
-            if skip_vault_env == 'y':
+            if skip_vault_env.lower() == 'y' or skip_vault_env.lower() == "yes":
                 for i, line in enumerate(psmpparms_content):
                     if line.startswith("#CreateVaultEnvironment="):
                         psmpparms_content[i] = "CreateVaultEnvironment=No\n"
@@ -1663,7 +1661,7 @@ def rpm_upgrade(psmp_version):
                     break
 
             disable_adbridge = input("Do you want to disable ADBridge? (y/n): ").strip().lower()
-            if disable_adbridge == 'y':
+            if disable_adbridge.lower() == 'y' or disable_adbridge.lower() == "yes":
                 for i, line in enumerate(psmpparms_content):
                     if line.startswith("#EnableADBridge="):
                         psmpparms_content[i] = "EnableADBridge=No\n"
@@ -1729,7 +1727,7 @@ def rpm_upgrade(psmp_version):
         except subprocess.CalledProcessError:
             logging.error("\n[-] Error during RPM file search or installation.")
             confirmation = input("Do you want to see the installation logs? (y/n): ")
-            if confirmation.lower() == "y":
+            if confirmation.lower() == "y" or confirmation.lower() == "yes":
                 try:
                     with open("/var/tmp/psmp_install.log", "r") as f:
                         for line in f:
@@ -1784,7 +1782,7 @@ if __name__ == "__main__":
     # Check if PSMP installed.
     if not psmp_version:
         logging.info("\n[-] No PSMP version found.")
-        logging.info("\n[!] Kindly proceed with PSMP RPM repair by executing: ' python3 PSMPChecker.py repair '")
+        logging.info("\n[!] Kindly proceed with PSMP RPM repair by executing: 'python3 PSMPChecker.py repair'")
         sys.exit(1)
         
     # Get the Linux distribution and version
