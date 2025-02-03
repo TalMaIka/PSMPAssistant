@@ -48,6 +48,9 @@ def handle_signal(signal, frame):
     sleep(2)  
     sys.exit(0) 
 
+# Set up the signal handler for SIGINT (Ctrl+C)
+signal.signal(signal.SIGINT, handle_signal)
+
 # File deletion as argument.
 def delete_file(file_path):
     try:
@@ -59,8 +62,6 @@ def delete_file(file_path):
     except Exception as e:
         print(f"An error occurred: {e}")
 
-# Set up the signal handler for SIGINT (Ctrl+C)
-signal.signal(signal.SIGINT, handle_signal)
 
 # PSMPWizard Logo
 def print_logo():
@@ -1210,7 +1211,7 @@ def rpm_repair(psmp_version):
             succeed = True
             for line in process.stdout:
                 print(line.strip())  # Display to the customer
-                if "Installation process was completed with errors." in line:
+                if "errors" in line:
                     logging.info(f"[-] Main RPM {rpm_file_path} Installation completed with errors.")
                     succeed = False
                     break
@@ -1274,7 +1275,7 @@ def rpm_instal():
             return
 
         # Extract the PSMP version from the RPM file name
-        psmp_version_match = re.search(r"CARKpsmp-(\d+\.\d+\.\d)", rpm_location)
+        psmp_version_match = re.search(r"CARKpsmp-(\d+\.\d)", rpm_location)
         if psmp_version_match:
             # Extract the version string from the match
             psmp_version = psmp_version_match.group(1)
@@ -1286,8 +1287,6 @@ def rpm_instal():
             # Map version 12.0X to 12.X format
             if main_version.startswith("12.0"):
                 psmp_version = main_version.replace("12.0", "12.")
-            
-            logging.info(f"RPM version detected: {psmp_version}")
         else:
             logging.info("PSMP version not found in the RPM file name.")
             return
@@ -1446,7 +1445,7 @@ def rpm_instal():
             succeed = True
             for line in process.stdout:
                 print(line.strip())  # Display to the customer
-                if "Installation process was completed with errors." in line:
+                if "errors" in line:
                     logging.info(f"[-] Main RPM {rpm_file_path} Installation completed with errors.")
                     succeed = False
                     break
@@ -1707,7 +1706,7 @@ def rpm_upgrade(psmp_version):
             succeed = True
             for line in process.stdout:
                 print(line.strip())  # Display to the customer
-                if "Installation process was completed with errors." in line:
+                if "errors" in line:
                     logging.info(f"[-] Main RPM {rpm_file_path} Installation completed with errors.")
                     succeed = False
                     break
