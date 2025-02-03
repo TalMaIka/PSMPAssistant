@@ -24,7 +24,6 @@ import glob
 REPAIR_REQUIRED = False
 
 # Logging to write to the dynamically named file and the console
-
 log_filename = datetime.now().strftime("PSMPWizard-%m-%d-%y-%H:%M.log")
 logging.basicConfig(
     level=logging.INFO,  
@@ -35,7 +34,7 @@ logging.basicConfig(
     ]
 )
 
-#Verifing privileged user
+# Verifing privileged user
 def check_privileges():
     if os.geteuid() != 0:
         print("\n[!] PSMPWizard tool must be run as root!")
@@ -64,7 +63,6 @@ def delete_file(file_path):
 signal.signal(signal.SIGINT, handle_signal)
 
 # PSMPWizard Logo
-
 def print_logo():
     logo = r"""
  _____ _____ _____ _____     _ _ _ _               _ 
@@ -1156,6 +1154,7 @@ def rpm_repair(psmp_version):
                 logging.info("ADBridge disabled.")
             else:
                 logging.info("ADBridge set to Yes.")
+            sleep(1)
 
             # Save changes to psmpparms.sample file
             with open("/var/tmp/psmpparms", "w") as f:
@@ -1206,8 +1205,17 @@ def rpm_repair(psmp_version):
             # Proceed with the main RPM repair
             rpm_file_path = os.path.join(install_folder, matching_rpms[0])
             logging.info(f"\nRepairing main RPM from: {rpm_file_path}")
-            subprocess.run(["rpm", "-Uvh", "--force", rpm_file_path])
-            logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
+            process = subprocess.Popen(["rpm", "-Uvh", "--force", rpm_file_path], stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True)
+            
+            succeed = True
+            for line in process.stdout:
+                print(line.strip())  # Display to the customer
+                if "Installation process was completed with errors." in line:
+                    logging.info(f"[-] Main RPM {rpm_file_path} Installation completed with errors.")
+                    succeed = False
+                    break
+            if succeed:
+                logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
         except subprocess.CalledProcessError:
             logging.error("\n[-] Error during RPM file search or installation.")
             confirmation = input("Do you want to see the installation logs? (y/n): ")
@@ -1266,10 +1274,20 @@ def rpm_instal():
             return
 
         # Extract the PSMP version from the RPM file name
-        psmp_version = re.search(r"CARKpsmp-(\d+\.\d)", rpm_location)
-        if psmp_version:
-            psmp_version = psmp_version.group(1)
-            logging.info(f"PSMP version detected: {psmp_version}")
+        psmp_version_match = re.search(r"CARKpsmp-(\d+\.\d+\.\d)", rpm_location)
+        if psmp_version_match:
+            # Extract the version string from the match
+            psmp_version = psmp_version_match.group(1)
+            
+            # Extract major and minor version numbers
+            major, minor, *_ = psmp_version.split('.')
+            main_version = f"{major}.{minor}"
+            
+            # Map version 12.0X to 12.X format
+            if main_version.startswith("12.0"):
+                psmp_version = main_version.replace("12.0", "12.")
+            
+            logging.info(f"RPM version detected: {psmp_version}")
         else:
             logging.info("PSMP version not found in the RPM file name.")
             return
@@ -1423,8 +1441,17 @@ def rpm_instal():
             # Proceed with the main RPM repair
             rpm_file_path = os.path.join(install_folder, matching_rpms[0])
             logging.info(f"\Installing main RPM from: {rpm_file_path}")
-            subprocess.run(["rpm", "-ivh", "--force", rpm_file_path])
-            logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
+            process = subprocess.Popen(["rpm", "-ivh", "--force", rpm_file_path], stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True)
+            
+            succeed = True
+            for line in process.stdout:
+                print(line.strip())  # Display to the customer
+                if "Installation process was completed with errors." in line:
+                    logging.info(f"[-] Main RPM {rpm_file_path} Installation completed with errors.")
+                    succeed = False
+                    break
+            if succeed:
+                logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
 
         except subprocess.CalledProcessError:
             logging.error("\n[-] Error during RPM file search or installation.")
@@ -1675,8 +1702,17 @@ def rpm_upgrade(psmp_version):
             # Proceed with the main RPM Upgrade
             rpm_file_path = os.path.join(install_folder, matching_rpms[0])
             logging.info(f"\nRepairing main RPM from: {rpm_file_path}")
-            subprocess.run(["rpm", "-Uvh", "--force", rpm_file_path])
-            logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
+            process = subprocess.Popen(["rpm", "-Uvh", "--force", rpm_file_path], stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True)
+            
+            succeed = True
+            for line in process.stdout:
+                print(line.strip())  # Display to the customer
+                if "Installation process was completed with errors." in line:
+                    logging.info(f"[-] Main RPM {rpm_file_path} Installation completed with errors.")
+                    succeed = False
+                    break
+            if succeed:
+                logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
         except subprocess.CalledProcessError:
             logging.error("\n[-] Error during RPM file search or installation.")
             confirmation = input("Do you want to see the installation logs? (y/n): ")
