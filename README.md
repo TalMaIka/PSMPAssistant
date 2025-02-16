@@ -1,4 +1,4 @@
-# PSMPWizard
+# PSMPAssistant
 
 ## Description
 
@@ -7,21 +7,21 @@ A Python-based tool designed to verify the installation and compatibility of Pri
 ## Installation
 
 ```bash
-git clone https://github.com/TalMaIka/PSMPWizard.git
-cd PSMPWizard
+git clone https://github.com/TalMaIka/PSMPAssistant.git
+cd PSMPAssistant
 Requirements are Python3.6 +
 ```
 
 ## Usage
 
-To use the tool, run the `PSMPWizard.py` script with optional arguments.
+To use the tool, run the `PSMPAssistant.py` script with optional arguments.
 
 ### Checking PSMP Compatibility and Configuration
 
 Run the script without any arguments to check the PSMP compatibility with the current system:
 
 ```bash
-python3 PSMPWizard.py
+python3 PSMPAssistant.py
 ```
 <img src="https://i.postimg.cc/vZqBXszB/main.png" alt="Tool landing page" style="width:80%;">
 
@@ -30,7 +30,7 @@ python3 PSMPWizard.py
 To collect logs from specified locations and create a zip file, use the `logs` argument:
 
 ```bash
-python3 PSMPWizard.py logs
+python3 PSMPAssistant.py logs
 ```
 <img src="https://i.postimg.cc/1zbzhrb1/logs.png" alt="Tool landing page" style="width:80%;">
 
@@ -39,7 +39,7 @@ python3 PSMPWizard.py logs
 To execute the PSMP RPM repair process `repair` argument:
 
 ```bash
-python3 PSMPWizard.py repair
+python3 PSMPAssistant.py repair
 ```
 <img src="https://i.postimg.cc/dt9DkdZG/repair.png" style="width:80%;">
 
@@ -48,7 +48,7 @@ python3 PSMPWizard.py repair
 To execute the PSMP RPM repair process `install` argument:
 
 ```bash
-python3 PSMPWizard.py install
+python3 PSMPAssistant.py install
 ```
 
 ### Generating PSMP Connection String
@@ -56,7 +56,7 @@ python3 PSMPWizard.py install
 To generate a PSMP connection string, use the `string` argument:
 
 ```bash
-python3 PSMPWizard.py string
+python3 PSMPAssistant.py string
 ```
 <img src="https://i.postimg.cc/HLrLhhZt/string.png" alt="Tool landing page" style="width:80%;">
 
@@ -65,7 +65,7 @@ python3 PSMPWizard.py string
 To restore the SSHD configuration from a backup, use the `restore-sshd` argument:
 
 ```bash
-python3 PSMPWizard.py restore-sshd
+python3 PSMPAssistant.py restore-sshd
 ```
 
 
