@@ -102,16 +102,8 @@ python3 PSMPAssistant.py restore-sshd
  + Checks if the SSHD debug level is set to DEBUG3.
  + https://community.cyberark.com/s/article/00003368
 
-### RPM Installation - Repair
+### RPM Repair
 - Automates the pre-installation steps by locating the RPM folder *matching* the PSMP installed version and executing the repair.
- + https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/before-installing-psmp.htm
-
-### RPM Installation - Upgrade
--  Simplifies upgrading to the latest available PSMP version.
- + https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/upgrading-the-psmp.htm
-
-### RPM Installation - Install
--  Automates the process of installing the PSMP package.
  + https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/before-installing-psmp.htm
 
 ### SSHD Configuration Restoration
