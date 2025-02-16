@@ -23,7 +23,7 @@ Run the script without any arguments to check the PSMP compatibility with the cu
 ```bash
 python3 PSMPAssistant.py
 ```
-<img src="https://i.postimg.cc/vZqBXszB/main.png" alt="Tool landing page" style="width:80%;">
+<img src="https://i.postimg.cc/dtynCj3V/main.gif" alt="Tool landing page">
 
 ### Collecting Logs
 
@@ -32,7 +32,7 @@ To collect logs from specified locations and create a zip file, use the `logs` a
 ```bash
 python3 PSMPAssistant.py logs
 ```
-<img src="https://i.postimg.cc/1zbzhrb1/logs.png" alt="Tool landing page" style="width:80%;">
+<img src="https://i.postimg.cc/vTpzjcqy/logs.gif" alt="Tool landing page">
 
 ### RPM Repair Automation
 
@@ -41,15 +41,7 @@ To execute the PSMP RPM repair process `repair` argument:
 ```bash
 python3 PSMPAssistant.py repair
 ```
-<img src="https://i.postimg.cc/dt9DkdZG/repair.png" style="width:80%;">
-
-### RPM Install Automation
-
-To execute the PSMP RPM repair process `install` argument:
-
-```bash
-python3 PSMPAssistant.py install
-```
+<img src="https://i.postimg.cc/cLGhBttM/repair.gif">
 
 ### Generating PSMP Connection String
 
@@ -58,7 +50,7 @@ To generate a PSMP connection string, use the `string` argument:
 ```bash
 python3 PSMPAssistant.py string
 ```
-<img src="https://i.postimg.cc/HLrLhhZt/string.png" alt="Tool landing page" style="width:80%;">
+<img src="https://i.postimg.cc/sf8w1NVL/string.gif" alt="Tool landing page">
 
 ### Restoring SSHD Configuration
 
