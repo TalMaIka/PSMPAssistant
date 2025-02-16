@@ -1192,7 +1192,7 @@ def rpm_repair(psmp_version):
 
 
 # Checking for command-line argument
-def command_line_args(psmp_version):
+def command_line_args(psmp_version,log_filename):
     for arg in sys.argv:
             if arg == "logs":
                 logs_collect()
@@ -1296,7 +1296,7 @@ if __name__ == "__main__":
     psmp_version = get_installed_psmp_version()
 
     # Check if the command-line argument is 'logs', 'string', 'restore-sshd' or 'repair'.
-    command_line_args(psmp_version)
+    command_line_args(psmp_version,log_filename)
 
     # Running main configuration validnation on the machine
     machine_conf_valid()
