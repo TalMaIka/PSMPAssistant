@@ -1,0 +1,33 @@
+{
+    "log_files": {
+        "CentOS Linux": "/var/log/secure",
+        "Red Hat": "/var/log/secure",
+        "SUSE Linux": "/var/log/messages",
+        "PSMPTrace": "/var/opt/CARKpsmp/logs/PSMPTrace.log"
+    },
+    "failed_attempts_patterns": [
+        "Permission denied",
+        "Server refused our key",
+        "Unable to negotiate with \\S+ port \\d+: no matching key exchange method found. Their offer: .+",
+        "Failed password for+",
+        "Authentication failure",
+        "Failed \\S+ from \\S+ port \\d+ ssh2",
+        "Invalid user \\S+ from \\S+",
+        "Connection closed by \\S+ port \\d+ \\[preauth\\]",
+        "error: PAM: Authentication failure for \\S+ from \\S+",
+        "debug3: mm_answer_keyallowed: publickey authentication test: RSA key is not allowed",
+        "does not match",
+        "match not found"
+    ],
+    "psmp_patterns": [
+        "Permission denied",
+        "PSMPPS276I Configuring SSH Proxy",
+        "Could not chdir to home directory /home/PSMConnect: Permission denied",
+        "Failed to add the host to the list of known hosts (/home/PSMShadowUser/.ssh/known_hosts).",
+        "ITACM022S Unable to connect to the vault",
+        "PSMPAP100E Failed to connect the PSM SSH Proxy to the Vault",
+        "PSMPPS037E PSM SSH Proxy has been terminated.",
+        "PSMSC023E LoadLocalUserProfile : Failed to load user profile for local user",
+        "ITATS108E Authentication failure for User"
+    ]
+}
