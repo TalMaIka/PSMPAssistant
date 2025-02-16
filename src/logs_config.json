@@ -1,0 +1,34 @@
+{
+    "log_folders": [
+        "/var/log/secure",
+        "/var/log/messages",
+        "/var/opt/CARKpsmp/logs",
+        "/etc/ssh/sshd_config",
+        "/etc/ssh/ssh_config",
+        "/etc/nsswitch.conf",
+        "/etc/pam.d/sshd",
+        "/etc/pam.d/password-auth",
+        "/etc/pam.d/system-auth",
+        "/var/tmp/psmp_install.log",
+        "/var/opt/CARKpsmp/temp/EnvManager.log",
+        "/etc/opt/CARKpsmp/conf/basic_psmpserver.conf",
+        "/etc/opt/CARKpsmpadb/conf/basic_psmpadbridge.conf",
+        "/var/opt/CARKpsmp/temp/PVConfiguration.xml",
+        "/var/opt/CARKpsmp/temp/Policies.xml"
+    ],
+    "commands": [
+        "getent passwd PSMConnect",
+        "getent passwd PSMShadowUser",
+        "getent passwd admin@root@localhost",
+        "getent group PSMConnectUsers",
+        "getent group PSMShadowUsers",
+        "getent passwd 50500",
+        "getent passwd 50501",
+        "getent group 50500",
+        "getent group 50501",
+        "getent group 50502",
+        "sshd -T",
+        "rpm -qa | grep CARK",
+        "ssh -V"
+    ]
+}
