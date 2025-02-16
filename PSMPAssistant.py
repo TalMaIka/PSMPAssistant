@@ -24,7 +24,7 @@ import glob
 REPAIR_REQUIRED = False
 
 # Logging to write to the dynamically named file and the console
-log_filename = datetime.now().strftime("PSMPWizard-%m-%d-%y-%H:%M.log")
+log_filename = datetime.now().strftime("PSMPAssistant-%m-%d-%y-%H:%M.log")
 logging.basicConfig(
     level=logging.INFO,  
     format='%(message)s',  
@@ -37,7 +37,7 @@ logging.basicConfig(
 # Verifing privileged user
 def check_privileges():
     if os.geteuid() != 0:
-        print("\n[!] PSMPWizard tool must be run as root!")
+        print("\n[!] PSMPAssistant tool must be run as root!")
         sleep(2)
         sys.exit(1)
 
@@ -63,13 +63,14 @@ def delete_file(file_path):
         print(f"An error occurred: {e}")
 
 
-# PSMPWizard Logo
+# PSMPAssistant Logo
 def print_logo():
     logo = r"""
- _____ _____ _____ _____     _ _ _ _               _ 
-|  _  |   __|     |  _  |___| | | |_|___ ___ ___ _| |
-|   __|__   | | | |   __|___| | | | |- _| .'|  _| . |
-|__|  |_____|_|_|_|__|      |_____|_|___|__,|_| |___|
+ ____  ____  __  __ ____   _            _     _              _   
+|  _ \/ ___||  \/  |  _ \ / \   ___ ___(_)___| |_ __ _ _ __ | |_ 
+| |_) \___ \| |\/| | |_) / _ \ / __/ __| / __| __/ _` | '_ \| __|
+|  __/ ___) | |  | |  __/ ___ \\__ \__ \ \__ \ || (_| | | | | |_ 
+|_|   |____/|_|  |_|_| /_/   \_\___/___/_|___/\__\__,_|_| |_|\__|
       © 2024 CyberArk Community, Developed By Tal.M"""
     logging.info(logo)
 
@@ -233,6 +234,9 @@ def is_integrated(psmp_version):
 # Check the status of PSMP and SSHD services
 
 def check_services_status():
+    logging.info("\nServices Availability Check:")
+    sleep(2)
+
     service_statuses = {}
     # Check PSMP service status
     try:
@@ -375,7 +379,7 @@ def backup_file(file_path):
     if not os.path.isfile(file_path):
         print(f"File '{file_path}' does not exist.")
         return False
-    log_filename = datetime.now().strftime("PSMPWizard-%m-%d-%y-%H:%M.bak")
+    log_filename = datetime.now().strftime("PSMPAssistant-%m-%d-%y-%H:%M.bak")
     backup_path = file_path + "_" + log_filename
     
     try:
@@ -479,6 +483,10 @@ def truncate_logs(file_path, max_lines=1500):
         logging.error(f"Error truncating {file_path}: {e}")
         return None
 
+def load_config(file_name):
+    with open(file_name, "r") as file:
+        return json.load(file)
+
 def logs_collect():
     logging.info("PSMP Logs Collection:")
 
@@ -488,54 +496,27 @@ def logs_collect():
         sys.exit(1)
     sleep(2)
 
+    # Load configuration from JSON
+    config = load_config("src/logs_config.json")
+
     # Get the directory of the currently running script
     script_directory = os.path.dirname(os.path.abspath(__file__))
 
     # Define the pattern to match log files in the script's directory
-    log_file_pattern = os.path.join(script_directory, "PSMPWizard-*.log")
+    log_file_pattern = os.path.join(script_directory, "PSMPAssistant-*.log")
 
     # Use glob to find all files matching the pattern
     log_files_to_collect = glob.glob(log_file_pattern)
 
-    # Define folders to copy logs from
-    log_folders = [
-        "/var/log/secure",
-        "/var/log/messages",
-        "/var/opt/CARKpsmp/logs",
-        "/etc/ssh/sshd_config",
-        "/etc/ssh/ssh_config",
-        "/etc/nsswitch.conf",
-        "/etc/pam.d/sshd",
-        "/etc/pam.d/password-auth",
-        "/etc/pam.d/system-auth",
-        "/var/tmp/psmp_install.log",
-        "/var/opt/CARKpsmp/temp/EnvManager.log",
-        "/etc/opt/CARKpsmp/conf/basic_psmpserver.conf",
-        "/etc/opt/CARKpsmpadb/conf/basic_psmpadbridge.conf",
-        "/var/opt/CARKpsmp/temp/PVConfiguration.xml",
-        "/var/opt/CARKpsmp/temp/Policies.xml"
-    ] + log_files_to_collect
+    # Combine JSON-defined log folders with dynamically found log files
+    log_folders = config["log_folders"] + log_files_to_collect
 
     # List of commands whose output we want to capture
-    commands = [
-        "getent passwd PSMConnect",
-        "getent passwd PSMShadowUser",
-        "getent passwd admin@root@localhost",
-        "getent group PSMConnectUsers",
-        "getent group PSMShadowUsers",
-        "getent passwd 50500",
-        "getent passwd 50501",
-        "getent group 50500",
-        "getent group 50501",
-        "getent group 50502",
-        "sshd -T",
-        "rpm -qa | grep CARK",
-        "ssh -V",
-    ]
+    commands = config["commands"]
 
     print("\nThe logs will be collected from the following folders:\n")
     for folder in log_folders:
-        if "PSMPWizard-" not in folder:
+        if "PSMPAssistant-" not in folder:
             print(folder)
     print("\nAs long as command output from these commands:")
     for command in commands:
@@ -547,11 +528,11 @@ def logs_collect():
         print("Logs collection aborted.")
         return
 
-    # Create the PSMPWizard-Logs directory for storing the collected logs
-    psmp_logs_directory = os.path.join(script_directory, "PSMPWizard-Logs")
+    # Create the PSMPAssistant-Logs directory for storing the collected logs
+    psmp_logs_directory = os.path.join(script_directory, "PSMPAssistant-Logs")
     os.makedirs(psmp_logs_directory, exist_ok=True)
 
-    # Create directories for the different categories inside the PSMPWizard-Logs directory
+    # Create directories for the different categories inside the PSMPAssistant-Logs directory
     os.makedirs(os.path.join(psmp_logs_directory, "OS"), exist_ok=True)
     os.makedirs(os.path.join(psmp_logs_directory, "PAM.d"), exist_ok=True)
     os.makedirs(os.path.join(psmp_logs_directory, "PSMP"), exist_ok=True)
@@ -607,7 +588,7 @@ def logs_collect():
                     elif "PVConfiguration.xml" in folder or "Policies.xml" in folder:
                         shutil.copy(folder, os.path.join(psmp_logs_directory, "PSMP/Temp", os.path.basename(folder)))
 
-        # Now, collect the PSMPWizard-*.log files directly into the PSMPWizard-Logs directory (outside of subdirectories)
+        # Now, collect the PSMPAssistant-*.log files directly into the PSMPAssistant-Logs directory (outside of subdirectories)
         for log_file in log_files_to_collect:
             shutil.copy(log_file, psmp_logs_directory)
 
@@ -627,7 +608,7 @@ def logs_collect():
 
         # Create a zip file with the specified name format
         current_date = datetime.now().strftime("-%m-%d-%y-%H:%M")
-        zip_filename = f"PSMPWizard_Logs_{current_date}.zip"
+        zip_filename = f"PSMPAssistant_Logs_{current_date}.zip"
         with zipfile.ZipFile(zip_filename, "w") as zipf:
             # Walk through the directory and add files to the zip with the appropriate paths
             for root, dirs, files in os.walk(psmp_logs_directory):
@@ -641,7 +622,7 @@ def logs_collect():
         print(f"An error occurred: {e}")
 
     finally:
-        # Clean up the PSMPWizard-Logs directory (optional)
+        # Clean up the PSMPAssistant-Logs directory (optional)
         shutil.rmtree(psmp_logs_directory, ignore_errors=True)
 
         
@@ -732,6 +713,9 @@ def generate_psmp_connection_string():
 # Checking system resources
 
 def check_system_resources():
+    logging.info("\nChecking system resources load:")
+    sleep(2)
+
     try:
         # Get CPU Load
         cpu_result = subprocess.run(["cat", "/proc/loadavg"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -775,76 +759,57 @@ def check_system_resources():
     except Exception as e:
         return f"Error retrieving system status: {e}"
 
-# Search the secure log file for known patterns
+# Search the secure amd messages log file for known patterns
 
-def search_secure_log(distro_name):
-    if distro_name == "CentOS Linux" or distro_name.startswith("Red Hat"):
-        log_file = "/var/log/secure"
-    elif distro_name.startswith("SUSE Linux"):
-        log_file = "/var/log/messages"
-    else:
-        return []
-    # Define patterns for failed connection attempts
-    failed_patterns = [
-        r'Permission denied',
-        r'Server refused our key'
-        r'Unable to negotiate with \S+ port \d+: no matching key exchange method found. Their offer: .+',
-        r'Failed password for+',
-        r'Authentication failure',
-        r'Failed \S+ from \S+ port \d+ ssh2',
-        r'Invalid user \S+ from \S+',
-        r'Connection closed by \S+ port \d+ \[preauth\]',
-        r'error: PAM: Authentication failure for \S+ from \S+',
-        r'debug3: mm_answer_keyallowed: publickey authentication test: RSA key is not allowed',
-        r'does not match',
-        r'match not found'
-    ]
+def search_logs_patterns(distro_name):
+    logging.info("\nSearching patterns in the secure logs...")
+    sleep(1)
+
+    config = load_config("src/logs_pattern_config.json")
+    found_entries = {"secure_logs": [], "psmp_logs": []}  # Ensure correct dictionary keys
+
+    # Determine the security log file based on the OS distribution
+    log_file = next((config["log_files"][key] for key in config["log_files"] if distro_name.startswith(key)), None)
+
+    # Compile regex patterns
+    failed_regexes = [re.compile(pattern) for pattern in config["failed_attempts_patterns"]]
+    psmp_patterns = config["psmp_patterns"]
+
+    # Search in security logs
+    if log_file:
+        try:
+            with open(log_file, 'r', encoding='utf-8') as file:
+                for line in file:
+                    if any(regex.search(line) for regex in failed_regexes):
+                        found_entries["secure_logs"].append(line.strip())
+        except FileNotFoundError:
+            logging.warning(f"Log file {log_file} not found.")
+        except Exception as e:
+            logging.error(f"Error reading log file {log_file}: {e}")
+
+    # Search in PSMPTrace logs
+    psmp_log_file = config["log_files"].get("PSMPTrace")
+    if psmp_log_file:
+        try:
+            with open(psmp_log_file, 'r', encoding='utf-8') as file:
+                for line in reversed(list(file.readlines())):  # Read from bottom to top
+                    if any(pattern in line for pattern in psmp_patterns):
+                        found_entries["psmp_logs"].append(line.strip())  # Corrected key name
+                        break  # Stop after first match
+        except FileNotFoundError:
+            logging.warning(f"PSMPTrace log file {psmp_log_file} not found.")
+        except Exception as e:
+            logging.error(f"Error reading PSMPTrace log file {psmp_log_file}: {e}")
+
+    # Print results
+    logging.info("\n=== Secure Logs ===")
+    logging.info("\n".join(found_entries["secure_logs"]) if found_entries["secure_logs"] else "No matches found.")
+
+    logging.info("\n=== Trace Logs ===")
+    logging.info("\n".join(found_entries["psmp_logs"]) if found_entries["psmp_logs"] else "No matches found.")
+
+
     
-    # Compile the patterns into regular expressions
-    failed_regexes = [re.compile(pattern) for pattern in failed_patterns]
-    
-    # Read the log file and search for failed connection attempts
-    failed_attempts = []
-    with open(log_file, 'r') as file:
-        for line in file:
-            for regex in failed_regexes:
-                if regex.search(line):
-                    failed_attempts.append(line.strip())
-                    break  # Avoid matching multiple patterns in the same line
-    
-    return failed_attempts
-
-# Search the PSMPTrace.log file for known patterns
-
-def search_log_for_patterns():
-    log_file = '/var/opt/CARKpsmp/logs/PSMPTrace.log'
-    found = False
-
-    patterns = [
-    "Permission denied",
-    "PSMPPS276I Configuring SSH Proxy",
-    "Could not chdir to home directory /home/PSMConnect: Permission denied",
-    "Failed to add the host to the list of known hosts (/home/PSMShadowUser/.ssh/known_hosts).",
-    "ITACM022S Unable to connect to the vault",
-    "PSMPAP100E Failed to connect the PSM SSH Proxy to the Vault",
-    "PSMPPS037E PSM SSH Proxy has been terminated.",
-    "PSMSC023E LoadLocalUserProfile : Failed to load user profile for local user",
-    "ITATS108E Authentication failure for User"
-    ]
-
-    # Open the log file in read mode ('r')
-    with open(log_file, 'r', encoding='utf-8') as file:
-        for line in reversed(list(file)):  # Read the file line by line from bottom to top
-            for pattern in patterns:
-                if pattern in line:
-                    logging.info(line.strip())
-                    found = True
-                    break
-            if found:
-                break
-
-    if not found:
-        logging.info(f"No lines containing any of the patterns found.")
 
 # Verify unique hostname
 def hostname_check():
@@ -1043,12 +1008,6 @@ def rpm_repair(psmp_version):
         if install_folder_input.lower() != 'y' and install_folder_input.lower() != "yes":
             logging.info("Installation folder not confirmed by user. Exiting.")
             return
-
-        # Step 3: Check and modify vault.ini file
-        vault_ini_path = os.path.join(install_folder, "/etc/opt/CARKpsmp/vault/vault.ini") # Fetching the current vault.ini
-        if os.path.exists(vault_ini_path):
-            with open(vault_ini_path, "r") as f:
-                vault_ini_content = f.readlines()
             
         # Step 3: Check and modify vault.ini file
         vault_ini_path = os.path.join(install_folder, "/etc/opt/CARKpsmp/vault/vault.ini") # Fetching the current vault.ini
@@ -1232,545 +1191,33 @@ def rpm_repair(psmp_version):
         logging.error(f"An error occurred during the RPM repair process: {e}")
 
 
-# Automates RPM installation
-
-def rpm_instal():
-    logging.info(f"\nPSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
-    logging.info("\nPSMP RPM Installation:")
-    sleep(2)
-    try:
-        # Step 1: Manually search for RPM files
-        rpm_files = []
-        for root, dirs, files in os.walk('/'):
-            for file in files:
-                if file.startswith('CARK') and file.endswith('.rpm'):
-                    file_path = os.path.join(root, file)
-                    # Exclude paths containing "/Trash/files/"
-                    if '/Trash/files/' not in file_path:
-                        rpm_files.append(file_path)
-
-        # Filter RPM files by PSMP version in the file name
-        matching_rpms = [rpm for rpm in rpm_files if "infra" not in rpm]
-
-        if not matching_rpms:
-            logging.info("No installation RPM found. Please ensure to unzip the PSMP installation package.")
-            return None  # No matching RPM found
-
-        # Sort by the full version tuple in descending order
-        matching_rpms.sort(key=lambda x: extract_version(x), reverse=True)
-        rpm_location = matching_rpms[0]
-        logging.info("Searching for the gradest PSMP version RPM installation...")
-        sleep(2)
-        logging.info(f"Selected RPM: {rpm_location}")
-
-        # If there are multiple matches, select the first one (or apply more logic if needed)
-        rpm_location = matching_rpms[0]
-        install_folder = os.path.dirname(rpm_location)
-        logging.info(f"Installation folder found at: {install_folder}")
-
-        # Validate installation folder
-        install_folder_input = input(f"Is the installation folder {install_folder} correct? (y/n): ").strip().lower()
-        if install_folder_input.lower() != 'y' and install_folder_input.lower() != "yes":
-            logging.info("Installation folder not confirmed by user. Exiting.")
-            return
-
-        # Extract the PSMP version from the RPM file name
-        psmp_version_match = re.search(r"CARKpsmp-(\d+\.\d)", rpm_location)
-        if psmp_version_match:
-            # Extract the version string from the match
-            psmp_version = psmp_version_match.group(1)
-            
-            # Extract major and minor version numbers
-            major, minor, *_ = psmp_version.split('.')
-            main_version = f"{major}.{minor}"
-            
-            # Map version 12.0X to 12.X format
-            if main_version.startswith("12.0"):
-                psmp_version = main_version.replace("12.0", "12.")
-        else:
-            logging.info("PSMP version not found in the RPM file name.")
-            return
-
-        # Step 3: Check and modify vault.ini file
-        vault_ini_path = os.path.join(install_folder, "vault.ini")
-        if os.path.exists(vault_ini_path):
-            with open(vault_ini_path, "r") as f:
-                vault_ini_content = f.readlines()
-
-
-            # Extract the vault IP from the file and confirm with the user
-            vault_ip = None
-            for line in vault_ini_content:
-                if line.startswith("ADDRESS="):
-                    vault_ip = line.strip().split("=")[1]
-                    break
-
-            if vault_ip:
-                logging.info(f"Fetched vault IP: {vault_ip}")
-                user_ip = input(f"Is the vault IP {vault_ip} correct? (y/n): ").strip().lower()
-                if user_ip.lower() != 'y' and user_ip.lower() != "yes":
-                    new_ip = input("Please enter the vault IP: ").strip()
-                    while len(new_ip) < 5:
-                        new_ip = input("Please enter a valid vault IP: ").strip()
-                    # Update the vault.ini file
-                    for i, line in enumerate(vault_ini_content):
-                        if line.startswith("ADDRESS="):
-                            vault_ini_content[i] = f"ADDRESS={new_ip}\n"
-                            break
-
-                    with open(vault_ini_path, "w") as f:
-                        f.writelines(vault_ini_content)
-                    logging.info(f"Updated vault IP to {new_ip} in vault.ini.")
-            else:
-                logging.info("No vault IP address found in vault.ini.")
-                new_ip = input("Please enter the vault IP: ").strip()
-                while len(new_ip) < 5:
-                    new_ip = input("Please enter a valid vault IP: ").strip()
-                # Update the vault.ini file
-                for i, line in enumerate(vault_ini_content):
-                    if line.startswith("ADDRESS="):
-                        vault_ini_content[i] = f"ADDRESS={new_ip}\n"
-                        break
-
-                with open(vault_ini_path, "w") as f:
-                    f.writelines(vault_ini_content)
-                logging.info(f"Updated vault IP to {new_ip} in vault.ini.")
-        else:
-            logging.info(f"vault.ini not found in {install_folder}")
-            sys.exit(1)
-
-        # Step 4: Modify psmpparms.sample file based on user input
-        psmpparms_sample_path = os.path.join(install_folder, "psmpparms.sample")
-        if os.path.exists(psmpparms_sample_path):
-            with open(psmpparms_sample_path, "r") as f:
-                psmpparms_content = f.readlines()
-
-            logging.info("Found psmpparms.sample file.")
-
-            for i, line in enumerate(psmpparms_content):
-                if line.startswith("InstallationFolder="):
-                    psmpparms_content[i] = f"InstallationFolder={install_folder}\n"
-                    break
-            logging.info(f"Installation folder updated to {install_folder} in psmpparms.")
-
-            # Accept CyberArk EULA
-            accept_eula = input("Do you accept the CyberArk EULA? (y/n): ").strip().lower()
-            if accept_eula.lower() == 'y' or accept_eula.lower() == "yes":
-                for i, line in enumerate(psmpparms_content):
-                    if line.startswith("AcceptCyberArkEULA="):
-                        psmpparms_content[i] = "AcceptCyberArkEULA=Yes\n"
-                        break
-                logging.info("CyberArk EULA accepted.")
-            else:
-                logging.info("CyberArk EULA not accepted.")
-                sleep(2)
-                sys.exit(1)
-
-            # Update EnableADBridge
-            logging.info("Vault environment creation set to Yes.")
-            integration_mode = 'y'
-            if float(psmp_version) <= 13.2:
-                integration_mode = input("Do you want to install PSMP as Integrated-Mode? (y/n): ").strip().lower()
-            # Update Integration state
-            for i, line in enumerate(psmpparms_content):
-                if line.lower().startswith("installcyberarksshd="):
-                    if float(psmp_version) > 13.2 or integration_mode.lower() == 'y' or integration_mode.lower() == "yes":
-                        psmpparms_content[i] = "InstallCyberArkSSHD=Integrated\n"
-                        logging.info("PSMP set to integrated.")
-                    else:
-                        psmpparms_content[i] = "InstallCyberArkSSHD=Yes\n"
-                        logging.info("PSMP set to non-integrated.")
-                    break
-
-            disable_adbridge = input("Do you want to disable ADBridge? (y/n): ").strip().lower()
-            if disable_adbridge.lower() == 'y' or disable_adbridge.lower() == "yes":
-                for i, line in enumerate(psmpparms_content):
-                    if line.startswith("#EnableADBridge="):
-                        psmpparms_content[i] = "EnableADBridge=No\n"
-                        break
-                logging.info("ADBridge disabled.")
-            else:
-                logging.info("ADBridge set to Yes.")
-
-            # Save changes to psmpparms.sample file
-            with open("/var/tmp/psmpparms", "w") as f:
-                f.writelines(psmpparms_content)
-            logging.info("psmpparms file updated and copied to /var/tmp/psmpparms.")
-
-        else:
-            logging.info(f"psmpparms.sample not found in {install_folder}")
-
-        # Step 5: Execute CreateCredFile and follow instructions
-        create_cred_file_path = os.path.join(install_folder, "CreateCredFile")
-        if os.path.exists(create_cred_file_path):
-            os.chmod(create_cred_file_path, 0o755)  # Make it executable
-            logging.info("\nCreateCredFile executed.\n")
-            vaultAdmin = input("Vault Username ==> ")
-            vaultPass = getpass.getpass("Vault Password (will be encrypted in secret file) ==> ")
-            subprocess.run([create_cred_file_path, "user.cred", "Password", "-Username", vaultAdmin, "-Password", vaultPass, "-EntropyFile"])
-            # Copy user.cred and user.cred.entropy to installation folder
-            try:
-                subprocess.run(["mv", "-f", "user.cred", "user.cred.entropy", install_folder], check=True)
-                logging.info("\nuser.cred and user.cred.entropy copied to installation folder.")
-            except FileNotFoundError:
-                logging.error("\nuser.cred or user.cred.entropy file not found.")
-            except Exception as e:
-                logging.error(f"Error: {e}")
-        else:
-            logging.info(f"\nCreateCredFile not found in {install_folder}")
-
-        # Step 6: Install the RPM
-        try:
-            if (integration_mode.lower() == 'y' or integration_mode.lower() == "yes") and float(psmp_version) <= 13.2:
-                integrated_rpm_dir = os.path.join(install_folder, "IntegratedMode")
-                integrated_rpm_files = [
-                    os.path.join(integrated_rpm_dir, rpm)
-                    for rpm in os.listdir(integrated_rpm_dir)
-                    if rpm.endswith(".rpm")
-                ]
-                
-                if not integrated_rpm_files:
-                    logging.warning("No IntegratedMode RPM file found.")
-                else:
-                    integrated_rpm_path = integrated_rpm_files[0]  # Install the first RPM found
-                    logging.info(f"\Installing IntegratedMode RPM from: {integrated_rpm_path}")
-                    subprocess.run(["rpm", "-ivh", "--force", integrated_rpm_path])
-                    logging.info(f"\n[+] IntegratedMode RPM {integrated_rpm_path} installed successfully.")
-            
-            # Proceed with the main RPM repair
-            rpm_file_path = os.path.join(install_folder, matching_rpms[0])
-            logging.info(f"\Installing main RPM from: {rpm_file_path}")
-            process = subprocess.Popen(["rpm", "-ivh", "--force", rpm_file_path], stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True)
-            
-            succeed = True
-            for line in process.stdout:
-                print(line.strip())  # Display to the customer
-                if "errors" in line:
-                    logging.info(f"[-] Main RPM {rpm_file_path} Installation completed with errors.")
-                    succeed = False
-                    break
-            if succeed:
-                logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
-
-        except subprocess.CalledProcessError:
-            logging.error("\n[-] Error during RPM file search or installation.")
-            confirmation = input("Do you want to see the installation logs? (y/n): ")
-            if confirmation.lower() == "y" or confirmation.lower() == "yes":
-                try:
-                    with open("/var/tmp/psmp_install.log", "r") as f:
-                        for line in f:
-                            print(line.strip())
-                except Exception as e:
-                    logging.error(f"Could not read log file: {e}")
-
-    except Exception as e:
-        logging.error(f"An error occurred during the RPM repair process: {e}")
-
-# Function to extract the full version as a tuple of integers
-def extract_version(rpm):
-    match = re.search(r"CARKpsmp-(\d+)\.(\d+)\.(\d+)\.(\d+)", rpm)
-    if match:
-        return tuple(map(int, match.groups()))  # Convert all groups to integers
-    return (0, 0, 0, 0)  # Default version for invalid formats
-
-# Automates RPM upgrade.
-
-def rpm_upgrade(psmp_version):
-    logging.info(f"\nPSMP documentation for upgrade.\n https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/upgrading-the-psmp.htm")
-    logging.info("\nPSMP RPM Upgrade:")
-    logging.info(f"Current PSMP Version Detected: {psmp_version}")
-    sleep(2)
-    try:
-        # Step 1: Manually search for RPM files
-        rpm_files = []
-        for root, dirs, files in os.walk('/'):
-            for file in files:
-                if file.startswith('CARK') and file.endswith('.rpm'):
-                    file_path = os.path.join(root, file)
-                    # Exclude paths containing "/Trash/files/"
-                    if '/Trash/files/' not in file_path:
-                        rpm_files.append(file_path)
-
-        # Filter RPM files by PSMP version in the file name
-        matching_rpms = [rpm for rpm in rpm_files if "infra" not in rpm]
-
-        if not matching_rpms:
-            logging.info("No installation RPM found. Please ensure to unzip the PSMP installation package.")
-            return None  # No matching RPM found
-
-        # Sort by the full version tuple in descending order
-        matching_rpms.sort(key=lambda x: extract_version(x), reverse=True)
-        rpm_location = matching_rpms[0]
-        logging.info("Searching for the gradest PSMP version RPM installation...")
-        sleep(2)
-        logging.info(f"Selected RPM: {rpm_location}")
-
-        # Execute the command and capture the output
-        psmp_version = subprocess.check_output("rpm -qa | grep -i cark", shell=True, universal_newlines=True)
-        
-        # Split output into lines and filter for the desired line
-        lines = psmp_version.strip().split('\n')
-        selected_version = next((line for line in lines if 'infra' not in line), None)
-        selected_version = selected_version.replace('-', '.')
-        selected_rpm_path = matching_rpms[0].split('/')[-1].replace('-', '.')
-        # Check if the PSMP version is already installed or numeric value is smaller than the current version
-        if selected_version in selected_rpm_path or extract_version(selected_version) < extract_version(selected_rpm_path):
-            logging.info(f"PSMP version {psmp_version.strip()} is already installed or selected version older than the current version.\n [-] Kindly make sure to unzip the the new PSMP installation package.")
-            sys.exit(1)
-        install_folder = os.path.dirname(rpm_location)
-        logging.info(f"Installation folder found at: {install_folder}")
-
-        # Validate installation folder
-        install_folder_input = input(f"Is the installation folder {install_folder} correct? (y/n): ").strip().lower()
-        if install_folder_input.lower() != 'y' and install_folder_input.lower() != "yes":
-            logging.info("Installation folder not confirmed by user. Exiting.")
-            return
-
-        # Extract the PSMP version from the RPM file name
-        psmp_version = re.search(r"CARKpsmp-(\d+\.\d)", rpm_location)
-        if psmp_version:
-            psmp_version = psmp_version.group(1)
-            logging.info(f"PSMP upgrade version detected: {psmp_version}")
-        else:
-            logging.info("PSMP version not found in the RPM file name.")
-            return
-        # Get the Linux distribution and version
-        distro_name, distro_version = get_linux_distribution()
-        # Check compatibility
-        if is_supported(psmp_versions, psmp_version, distro_name, distro_version):
-            logging.info(f"PSMP Version {psmp_version} Supports {distro_name} {distro_version}")
-        else:
-            logging.info(f"PSMP Version {psmp_version} Does Not Support {distro_name} {distro_version}")
-            logging.info(f"Please refer to the PSMP documentation for supported versions.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/Content/PAS%20SysReq/System%20Requirements%20-%20PSMP.htm")
-            sys.exit(1)
-        # Step 3: Check and modify vault.ini file
-        vault_ini_path = os.path.join(install_folder, "/etc/opt/CARKpsmp/vault/vault.ini") # Fetching the current vault.ini
-        if os.path.exists(vault_ini_path):
-            with open(vault_ini_path, "r") as f:
-                vault_ini_content = f.readlines()
-
-            # Extract the vault IP from the file and confirm with the user
-            vault_ip = None
-            for line in vault_ini_content:
-                if line.startswith("ADDRESS="):
-                    vault_ip = line.strip().split("=")[1]
-                    break
-            vault_ini_path = os.path.join(install_folder, "vault.ini") # Back to the installation folder vault.ini
-            if vault_ip:
-                logging.info(f"Fetched vault IP: {vault_ip}")
-                user_ip = input(f"Is the vault IP {vault_ip} correct? (y/n): ").strip().lower()
-                if user_ip.lower() != 'y' and user_ip.lower() != "yes":
-                    vault_ip = input("Please enter the vault IP: ").strip()
-                    while len(vault_ip) < 5:
-                        vault_ip = input("Please enter a valid vault IP: ").strip()
-                # Update the vault.ini file
-                for i, line in enumerate(vault_ini_content):
-                    if line.startswith("ADDRESS="):
-                        vault_ini_content[i] = f"ADDRESS={vault_ip}\n"
-                        break
-                        
-                with open(vault_ini_path, "w") as f:
-                    f.writelines(vault_ini_content)
-                logging.info(f"Updated vault IP to {vault_ip} in vault.ini.")
-            else:
-                logging.info("No vault IP address found in vault.ini.")
-                vault_ip = input("Please enter the vault IP: ").strip()
-                while len(vault_ip) < 5:
-                    vault_ip = input("Please enter a valid vault IP: ").strip()
-                # Update the vault.ini file
-                for i, line in enumerate(vault_ini_content):
-                    if line.startswith("ADDRESS="):
-                        vault_ini_content[i] = f"ADDRESS={vault_ip}\n"
-                        break
-
-                with open(vault_ini_path, "w") as f:
-                    f.writelines(vault_ini_content)
-                logging.info(f"Updated vault IP to {vault_ip} in vault.ini.")
-        else:
-            logging.info(f"vault.ini not found in {install_folder}")
-            sys.exit(1)
-
-        # Step 4: Modify psmpparms.sample file based on user input
-        psmpparms_sample_path = os.path.join(install_folder, "psmpparms.sample")
-        if os.path.exists(psmpparms_sample_path):
-            with open(psmpparms_sample_path, "r") as f:
-                psmpparms_content = f.readlines()
-
-            logging.info("Found psmpparms.sample file.")
-
-            for i, line in enumerate(psmpparms_content):
-                if line.startswith("InstallationFolder="):
-                    psmpparms_content[i] = f"InstallationFolder={install_folder}\n"
-                    break
-            logging.info(f"Installation folder updated to {install_folder} in psmpparms.")
-
-            # Accept CyberArk EULA
-            accept_eula = input("Do you accept the CyberArk EULA? (y/n): ").strip().lower()
-            if accept_eula.lower() == 'y' or accept_eula.lower() == "yes":
-                for i, line in enumerate(psmpparms_content):
-                    if line.startswith("AcceptCyberArkEULA="):
-                        psmpparms_content[i] = "AcceptCyberArkEULA=Yes\n"
-                        break
-                logging.info("CyberArk EULA accepted.")
-            else:
-                logging.info("CyberArk EULA not accepted.")
-                sleep(2)
-                sys.exit(1)
-
-            # Update CreateVaultEnvironment and EnableADBridge
-            skip_vault_env = input("Do you want to skip Vault environment creation? (y/n): ").strip().lower()
-            if skip_vault_env.lower() == 'y' or skip_vault_env.lower() == "yes":
-                for i, line in enumerate(psmpparms_content):
-                    if line.startswith("#CreateVaultEnvironment="):
-                        psmpparms_content[i] = "CreateVaultEnvironment=No\n"
-                        break
-                logging.info("Vault environment creation set to No.")
-            else:
-                logging.info("Vault environment creation set to Yes.")
-
-            # Update Integration state
-            for i, line in enumerate(psmpparms_content):
-                if line.lower().startswith("installcyberarksshd="):
-                    if is_integrated(psmp_version):
-                        psmpparms_content[i] = "InstallCyberArkSSHD=Integrated\n"
-                        logging.info("PSMP set to integrated.")
-                    else:
-                        psmpparms_content[i] = "InstallCyberArkSSHD=Yes\n"
-                        logging.info("PSMP set to non-integrated.")
-                    break
-
-            disable_adbridge = input("Do you want to disable ADBridge? (y/n): ").strip().lower()
-            if disable_adbridge.lower() == 'y' or disable_adbridge.lower() == "yes":
-                for i, line in enumerate(psmpparms_content):
-                    if line.startswith("#EnableADBridge="):
-                        psmpparms_content[i] = "EnableADBridge=No\n"
-                        break
-                logging.info("ADBridge disabled.")
-            else:
-                logging.info("ADBridge set to Yes.")
-
-            # Save changes to psmpparms.sample file
-            with open("/var/tmp/psmpparms", "w") as f:
-                f.writelines(psmpparms_content)
-            logging.info("psmpparms file updated and copied to /var/tmp/psmpparms.")
-
-        else:
-            logging.info(f"psmpparms.sample not found in {install_folder}")
-
-        # Step 5: Execute CreateCredFile and follow instructions
-        create_cred_file_path = os.path.join(install_folder, "CreateCredFile")
-        if os.path.exists(create_cred_file_path):
-            os.chmod(create_cred_file_path, 0o755)  # Make it executable
-            logging.info("\nCreateCredFile executed.\n")
-            vaultAdmin = input("Vault Username ==> ")
-            vaultPass = getpass.getpass("Vault Password (will be encrypted in secret file) ==> ")
-            subprocess.run([create_cred_file_path, "user.cred", "Password", "-Username", vaultAdmin, "-Password", vaultPass, "-EntropyFile"])
-            # Copy user.cred and user.cred.entropy to installation folder
-            try:
-                subprocess.run(["mv", "-f", "user.cred", "user.cred.entropy", install_folder], check=True)
-                logging.info("\nuser.cred and user.cred.entropy copied to installation folder.")
-            except FileNotFoundError:
-                logging.error("\nuser.cred or user.cred.entropy file not found.")
-            except Exception as e:
-                logging.error(f"Error: {e}")
-        else:
-            logging.info(f"\nCreateCredFile not found in {install_folder}")
-
-        # Step 6: Upgrade the RPM
-        try:
-            if not is_integrated(psmp_version) and extract_version(selected_version) > 13.3:
-                logging.info("Selected PSMP version is greater than 13.3 and installed mode is non-integrated.\n Since non-integrated mode is deprecated in versions 13.2+, please proceed with the RPM upgrade to integrated doc.")
-                logging.info("https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/upgrading-the-psmp.htm")
-            if is_integrated(psmp_version) and float(psmp_version) <= 13.2:
-                integrated_rpm_dir = os.path.join(install_folder, "IntegratedMode")
-                integrated_rpm_files = [
-                    os.path.join(integrated_rpm_dir, rpm)
-                    for rpm in os.listdir(integrated_rpm_dir)
-                    if rpm.endswith(".rpm")
-                ]
-                
-                if not integrated_rpm_files:
-                    logging.warning("No IntegratedMode RPM file found.")
-                else:
-                    integrated_rpm_path = integrated_rpm_files[0]  # Upgrade the first RPM found
-                    logging.info(f"\nRepairing IntegratedMode RPM from: {integrated_rpm_path}")
-                    subprocess.run(["rpm", "-Uvh", "--force", integrated_rpm_path])
-                    
-                    logging.info(f"\n[+] IntegratedMode RPM {integrated_rpm_path} installed successfully.")
-            
-            # Proceed with the main RPM Upgrade
-            rpm_file_path = os.path.join(install_folder, matching_rpms[0])
-            logging.info(f"\nRepairing main RPM from: {rpm_file_path}")
-            process = subprocess.Popen(["rpm", "-Uvh", "--force", rpm_file_path], stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True)
-            
-            succeed = True
-            for line in process.stdout:
-                print(line.strip())  # Display to the customer
-                if "errors" in line:
-                    logging.info(f"[-] Main RPM {rpm_file_path} Installation completed with errors.")
-                    succeed = False
-                    break
-            if succeed:
-                logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
-        except subprocess.CalledProcessError:
-            logging.error("\n[-] Error during RPM file search or installation.")
-            confirmation = input("Do you want to see the installation logs? (y/n): ")
-            if confirmation.lower() == "y" or confirmation.lower() == "yes":
-                try:
-                    with open("/var/tmp/psmp_install.log", "r") as f:
-                        for line in f:
-                            print(line.strip())
-                except Exception as e:
-                    logging.error(f"Could not read log file: {e}")
-
-    except Exception as e:
-        logging.error(f"An error occurred during the RPM repair process: {e}")
-
-
-if __name__ == "__main__":
-
-    # Print the PSMPWizard logo
-    print_logo()
-
-    #Verifing privileged user
-    check_privileges()
-
-    # Load PSMP versions from a JSON file
-    psmp_versions = load_psmp_versions_json('src/versions.json')
-
-    # Get the installed PSMP version
-    psmp_version = get_installed_psmp_version()
-
-    # Check if the command-line argument is 'logs', 'string' or 'restore-sshd', then execute the function
+# Checking for command-line argument
+def command_line_args(psmp_version):
     for arg in sys.argv:
-        if arg == "logs":
-            logs_collect()
-            sys.exit(1)
-        elif arg == "restore-sshd":
-            restore_sshd_config_from_backup()
-            delete_file(log_filename)
-            sys.exit(1)
-        elif arg == "string":
-            logging.info(generate_psmp_connection_string())
-            delete_file(log_filename)
-            sys.exit(1)
-        elif arg == "repair":
-            log_filename = datetime.now().strftime("PSMPWizard-Repair-%m-%d-%y-%H:%M.log")
-            rpm_repair(psmp_version)
-            sys.exit(1)
-        elif arg == "install":
-            log_filename = datetime.now().strftime("PSMPWizard-Installation-%m-%d-%y-%H:%M.log")
-            rpm_instal()
-            sys.exit(1)
-        elif arg == "upgrade":
-            log_filename = datetime.now().strftime("PSMPWizard-Uograde-%m-%d-%y-%H:%M.log")
-            rpm_upgrade(psmp_version)
-            sys.exit(1)
+            if arg == "logs":
+                logs_collect()
+                sys.exit(1)
+            elif arg == "restore-sshd":
+                restore_sshd_config_from_backup()
+                delete_file(log_filename)
+                sys.exit(1)
+            elif arg == "string":
+                logging.info(generate_psmp_connection_string())
+                delete_file(log_filename)
+                sys.exit(1)
+            elif arg == "repair":
+                log_filename = datetime.now().strftime("PSMPAssistant-Repair-%m-%d-%y-%H:%M.log")
+                rpm_repair(psmp_version)
+                sys.exit(1)
 
+
+# Validating machine configuration
+
+def machine_conf_valid():
     # Check if PSMP installed.
     if not psmp_version:
         logging.info("\n[-] No PSMP version found.")
-        logging.info("\n[!] Kindly proceed with PSMP RPM repair by executing: 'python3 PSMPWizard.py repair'")
+        logging.info("\n[!] Kindly proceed with PSMP RPM repair by executing: 'python3 PSMPAssistant.py repair'")
         sys.exit(1)
         
     # Get the Linux distribution and version
@@ -1798,8 +1245,6 @@ if __name__ == "__main__":
         nsswitch_changes=verify_nsswitch_conf(psmp_version)
 
     # Check system resources load.
-    logging.info("\nChecking system resources load:")
-    sleep(2)
     logging.info(check_system_resources())
 
     # Check SSHD configuration
@@ -1808,31 +1253,18 @@ if __name__ == "__main__":
     #Check SELinux
     print_latest_selinux_prevention_lines()
 
-        #Check for REPAIR_REQUIRED flag
+    #Check for REPAIR_REQUIRED flag
     if REPAIR_REQUIRED:
-        logging.info("\n[!] RPM Repair required, for repair automation execute ' python3 PSMPWizard.py repair '")
+        logging.info("\n[!] RPM Repair required, for repair automation execute ' python3 PSMPAssistant.py repair '")
         sleep(2)
         sys.exit(1)
 
     # Search for failed connection attempts in the secure log
-    logging.info("\nSearching patterns in the secure logs...")
-    sleep(2)
-    failed_attempts = search_secure_log(distro_name)
-    if not failed_attempts:
-        logging.info("No lines containing any of the patterns found.")
-    else:
-        for attempt in failed_attempts:
-            logging.info(attempt)
-
-    # Search for patterns in the PSMPTrace.log file
-    logging.info("\nSearching patterns in the PSMPTrace.log...")
-    sleep(2)
-    search_log_for_patterns()
+    search_logs_patterns(distro_name)
 
     # Check service status
-    logging.info("\nServices Availability Check:")
-    sleep(2)
     service_status = check_services_status()
+
     # Check if service status is Inactive
     if check_vault_comm(service_status):
         service_status = check_services_status()
@@ -1846,4 +1278,25 @@ if __name__ == "__main__":
      # Offer the customer to repair the PSMP Installation RPM
     if service_status.get('psmpsrv', 'Unavailable') != "Running and communicating with Vault":
         if not nsswitch_changes:
-            logging.info("\n[!] Recommended to proceed with a RPM installation repair, for repair automation execute ' python3 PSMPWizard.py repair '")
+            logging.info("\n[!] Recommended to proceed with a RPM installation repair, for repair automation execute ' python3 PSMPAssistant.py repair '")
+
+
+if __name__ == "__main__":
+
+    # Print the PSMPAssistant logo
+    print_logo()
+
+    #Verifing privileged user
+    check_privileges()
+
+    # Load PSMP versions from a JSON file
+    psmp_versions = load_psmp_versions_json('src/versions.json')
+
+    # Get the installed PSMP version
+    psmp_version = get_installed_psmp_version()
+
+    # Check if the command-line argument is 'logs', 'string', 'restore-sshd' or 'repair'.
+    command_line_args(psmp_version)
+
+    # Running main configuration validnation on the machine
+    machine_conf_valid()
