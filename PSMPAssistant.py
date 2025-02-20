@@ -93,6 +93,7 @@ class Utility:
         logging.info(f"{logo}\n\n")
 
     # Collect PSMP machine logs and creating a zip file
+    @staticmethod
     def truncate_logs(file_path, max_lines=1500):
         try:
             with open(file_path, 'r') as file:
@@ -105,9 +106,34 @@ class Utility:
             return None
 
     # Load configuration from a JSON file
+    @staticmethod
     def load_config(file_name):
         with open(file_name, "r") as file:
             return json.load(file)
+    
+    # Check systemd service status
+    @staticmethod
+    def get_service_status(service_name):
+            
+            try:
+                result = subprocess.check_output(f"systemctl is-active {service_name}", shell=True, text=True).strip()
+                return "Running" if result == "active" else "[-] Inactive"
+            except subprocess.CalledProcessError:
+                return "[-] Inactive"
+            
+    # Read a file and return its content. Defaults to text mode with UTF-8 encoding.
+    @staticmethod
+    def read_file(file_path, mode="r"):
+        try:
+            with open(file_path, mode) as file:
+                return file.readlines() if "b" not in mode else file.read()
+        except FileNotFoundError:
+            logging.error(f"File not found: {file_path}")
+        except PermissionError:
+            logging.error(f"Permission denied: {file_path}")
+        except Exception as e:
+            logging.error(f"Error reading {file_path}: {e}")
+        return None
 
 
 class SystemConfiguration:
@@ -163,57 +189,38 @@ class SystemConfiguration:
 
     # Get the Linux distribution and version
     def get_linux_distribution():
-        try:
-            # Check CentOS or Red Hat release files
-            for release_file in ["/etc/centos-release", "/etc/redhat-release"]:
-                try:
-                    with open(release_file, "r") as f:
-                        content = f.read().strip()
-                        if content:
-                            # Remove "Core" if present and extract major.minor version
-                            content = content.replace("Core", "").strip()
-                            version_parts = content.split("release")[1].strip().split(" ")
-                            major_minor_version = version_parts[0].split(".")[:2]
-                            # Format the output for CentOS and RHEL
-                            if "CentOS" in content:
-                                return "CentOS Linux", '.'.join(major_minor_version)
-                            elif "Red Hat" in content:
-                                return "Red Hat Enterprise Linux", '.'.join(major_minor_version)
-                except FileNotFoundError:
-                    continue
+        
+        release_files = {
+            "/etc/centos-release": "CentOS Linux",
+            "/etc/redhat-release": "Red Hat Enterprise Linux"
+        }
 
-            # Parse /etc/os-release as fallback
+        # Check CentOS/Red Hat release files
+        for file_path, distro_name in release_files.items():
             try:
-                with open("/etc/os-release", "r") as f:
-                    distro_info = {}
-                    for line in f:
-                        key, _, value = line.partition("=")
-                        distro_info[key.strip()] = value.strip().strip('"')
-                    distro_name = distro_info.get("NAME", "Unknown")
-                    distro_version = distro_info.get("VERSION_ID", "Unknown")
-                    # Ensure the return format is the same
-                    return distro_name, distro_version
+                with open(file_path, "r") as f:
+                    content = f.read().replace("Core", "").strip()
+                    version = content.split("release")[1].split()[0]  # Extract major.minor version
+                    return distro_name, version
             except FileNotFoundError:
-                pass
+                continue
 
-            # Use uname as a last resort
-            try:
-                uname_result = subprocess.run(
-                    ["uname", "-r"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    universal_newlines=True
-                )
-                if uname_result.returncode == 0:
-                    return "Linux Kernel", uname_result.stdout.strip()
-            except Exception:
-                pass
+        # Fallback: Parse /etc/os-release
+        try:
+            with open("/etc/os-release", "r") as f:
+                distro_info = dict(line.strip().split("=", 1) for line in f if "=" in line)
+                return distro_info.get("NAME", "Unknown"), distro_info.get("VERSION_ID", "Unknown")
+        except FileNotFoundError:
+            pass
 
-            # If all else fails
-            return "Unknown Linux Distribution", "Unknown"
+        # Last resort: Use uname
+        try:
+            uname_version = subprocess.run(["uname", "-r"], capture_output=True, text=True, check=True).stdout.strip()
+            return "Linux Kernel", uname_version
+        except subprocess.CalledProcessError:
+            pass
 
-        except Exception as e:
-            return f"Error determining Linux distribution: {e}"
+        return "Unknown Linux Distribution", "Unknown"
 
 
     # Check if the PSMP version is supported for the given Linux distribution and version
@@ -264,43 +271,30 @@ class SystemConfiguration:
         except subprocess.CalledProcessError as e:
             logging.error(f"Failed to retrieve RPM packages: {e}")
             return False
-
-
-    # Check the status of PSMP and SSHD services
+            
+    
+    # Check the status of PSMP and SSHD services.
     def check_services_status():
         logging.info("\nServices Availability Check:")
         sleep(2)
 
-        service_statuses = {}
-        # Check PSMP service status
-        try:
-            result_psmpsrv = subprocess.check_output("systemctl status psmpsrv", shell=True, universal_newlines=True)
-            if "Active: active" in result_psmpsrv:
-                with open("/var/opt/CARKpsmp/logs/PSMPConsole.log", "r") as log_file:
-                    log_content = log_file.read()
-                    if "is up and working with Vault" and ( not "Sockets server is down" in log_content and not "PSM SSH Proxy has been terminated" in log_content):
-                        service_statuses["psmpsrv"] = "Running and communicating with Vault"
-                    else:
-                        service_statuses["psmpsrv"] = "[-] Running but not communicating with Vault"
-            elif "Active: inactive" in result_psmpsrv:
-                service_statuses["psmpsrv"] = "[-] Inactive"
-            else:
-                service_statuses["psmpsrv"] = "[-] Inactive"
-        except subprocess.CalledProcessError:
-            service_statuses["psmpsrv"] = "[-] Inactive"
+        service_statuses = {
+            "psmpsrv": Utility.get_service_status("psmpsrv"),
+            "sshd": Utility.get_service_status("sshd"),
+        }
 
-        # Check SSHD service status
-        try:
-            result_sshd = subprocess.check_output("systemctl status sshd", shell=True, universal_newlines=True)
-            if "Active: active" in result_sshd:
-                service_statuses["sshd"] = "Running"
-            elif "Active: inactive" in result_sshd:
-                service_statuses["sshd"] = "[-] Inactive"
-            else:
-                service_statuses["sshd"] = "[-] Inactive"
-        except subprocess.CalledProcessError:
-            service_statuses["sshd"] = "[-] Inactive"
-        
+        # Check PSMP communication with the Vault
+        if service_statuses["psmpsrv"] == "Running":
+            log_content = Utility.read_file("/var/opt/CARKpsmp/logs/PSMPConsole.log")
+            if log_content:
+                log_content = "".join(log_content)
+                if "is up and working with Vault" in log_content and \
+                "Sockets server is down" not in log_content and \
+                "PSM SSH Proxy has been terminated" not in log_content:
+                    service_statuses["psmpsrv"] = "Running and communicating with Vault"
+                else:
+                    service_statuses["psmpsrv"] = "[-] Running but not communicating with Vault"
+
         return service_statuses
 
 
@@ -332,8 +326,8 @@ class SystemConfiguration:
         return vault_address.split(",")[0].strip()  # Return the first (Primary) address
 
     # Verify correct vault address
-    def verify_vault_address(vault_addrress,file_path):
-        user_ip = input(f"Is the Vault address {vault_addrress} correct? (y/n): ").strip().lower()
+    def verify_vault_address(vault_address,file_path):
+        user_ip = input(f"Is the Vault address {vault_address} correct? (y/n): ").strip().lower()
         if user_ip.lower() != 'y' and user_ip.lower() != "yes":
             logging.info(f"Wrong Vault address, Kindly edit the address under '{file_path}'.")
             sys.exit(1)
@@ -605,15 +599,15 @@ class SystemConfiguration:
         log_file = next((config["log_files"][key] for key in config["log_files"] if distro_name.startswith(key)), None)
 
         # Compile regex patterns
-        failed_regexes = [re.compile(pattern) for pattern in config["failed_attempts_patterns"]]
-        psmp_patterns = config["psmp_patterns"]
+        secure_logs_patterns = [re.compile(pattern) for pattern in config["secure_logs_patterns"]]
+        psmp_trace_patterns = config["psmp_trace_patterns"]
 
         # Search in security logs
         if log_file:
             try:
                 with open(log_file, 'r', encoding='utf-8') as file:
                     for line in file:
-                        if any(regex.search(line) for regex in failed_regexes):
+                        if any(regex.search(line) for regex in secure_logs_patterns):
                             found_entries["secure_logs"].append(line.strip())
             except FileNotFoundError:
                 logging.warning(f"Log file {log_file} not found.")
@@ -626,7 +620,7 @@ class SystemConfiguration:
             try:
                 with open(psmp_log_file, 'r', encoding='utf-8') as file:
                     for line in reversed(file.readlines()):  # Read from bottom to top
-                        if any(pattern in line for pattern in psmp_patterns):
+                        if any(pattern in line for pattern in psmp_trace_patterns):
                             found_entries["psmp_logs"].append(line.strip()) 
             except FileNotFoundError:
                 logging.warning(f"PSMPTrace log file {psmp_log_file} not found.")
@@ -658,57 +652,58 @@ class SystemConfiguration:
         sleep(2)
         try:
             # Run the 'sestatus' command to check SELinux status
-            result = subprocess.run(['sestatus'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
-            logging.info(result.stdout)
+            result = subprocess.run(['sestatus'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True) 
+            logging.info(result.stdout.strip())
             
         except subprocess.CalledProcessError:
             logging.info("SELinux is not installed or not available on this system.")
         except FileNotFoundError:
             logging.info("The 'sestatus' command is not found. SELinux may not be installed.")
-        try:
-            # Use a deque to keep the latest 10 matching lines
-            latest_lines = deque(maxlen=2)
-
-            with open(log_file_path, 'r') as log_file:
-                for line in log_file:
-                    # Check if the line contains the search string
-                    if search_string in line:
-                        # Add the line to the deque
-                        latest_lines.append(line.strip())
-            
-            if len(latest_lines) > 0:
-                # Print each line in the deque on a new line
-                for line in latest_lines:
-                    # If the line is longer than 200 characters, truncate it to 200 characters
-                    if len(line) > 200:
-                        logging.info(line[:200] + "...")
-                    else:
-                        logging.info(line)
-            else:
-                logging.info("[+] SElinux is not preventing PSMP components.")
-            
-            # Check if SELinux is enforcing
-            if "SELinux status:                 enabled" in result.stdout and "Current mode:                   enforcing" in result.stdout:
-                logging.info("SELinux is in enforcing mode.")
-
-                # Prompt the user for agreement to temporarily disable SELinux
-                user_input = input("SELinux is enforcing. Would you like to temporarily disable SELinux for testing purposes until the next reboot? (y/n): ").strip().lower()
-                if user_input.lower() == 'y' or user_input.lower() == "yes":
-                    try:
-                        # Disable SELinux temporarily by setting it to permissive
-                        logging.info("Disabling SELinux temporarily (setenforce 0)...")
-                        subprocess.run(['setenforce', '0'], check=True)
-                        logging.info("[!] SELinux has been temporarily disabled. It will revert to enforcing mode after the next reboot.")
-                    except subprocess.CalledProcessError as e:
-                        logging.error(f"Failed to disable SELinux: {e}")
+        if "disabled" not in result.stdout.strip():
+            try:
+                # Use a deque to keep the latest 10 matching lines
+                latest_lines = deque(maxlen=2)
+                with open(log_file_path, 'r') as log_file:
+                    for line in log_file:
+                        # Check if the line contains the search string
+                        if search_string in line:
+                            # Add the line to the deque
+                            latest_lines.append(line.strip())
+                
+                if len(latest_lines) > 0:
+                    logging.info("\n=== Messages Logs ===")
+                    # Print each line in the deque on a new line
+                    for line in latest_lines:
+                        # If the line is longer than 200 characters, truncate it to 200 characters
+                        if len(line) > 200:
+                            logging.info(line[:130] + "...")
+                        else:
+                            logging.info(line)
                 else:
-                    logging.info("SELinux will remain in enforcing mode.")
+                    logging.info("[+] SElinux is not preventing PSMP components.")
+                
+                # Check if SELinux is enforcing
+                if "SELinux status:                 enabled" in result.stdout and "Current mode:                   enforcing" in result.stdout:
+                    logging.info("SELinux is in enforcing mode.\n")
+
+                    # Prompt the user for agreement to temporarily disable SELinux
+                    user_input = input("SELinux is enforcing. Temporarily disable until reboot? (y/n):").strip().lower()
+                    if user_input.lower() == 'y' or user_input.lower() == "yes":
+                        try:
+                            # Disable SELinux temporarily by setting it to permissive
+                            logging.info("Disabling SELinux temporarily (setenforce 0)...")
+                            subprocess.run(['setenforce', '0'], check=True)
+                            logging.info("[!] SELinux has been temporarily disabled.")
+                        except subprocess.CalledProcessError as e:
+                            logging.error(f"Failed to disable SELinux: {e}")
+                    else:
+                        logging.info("SELinux will remain in enforcing mode.")
 
 
-        except FileNotFoundError:
-            logging.info(f"Error: The file '{log_file_path}' does not exist.")
-        except PermissionError:
-            logging.info(f"Error: You do not have permission to access '{log_file_path}'.")
+            except FileNotFoundError:
+                logging.info(f"Error: The file '{log_file_path}' does not exist.")
+            except PermissionError:
+                logging.info(f"Error: You do not have permission to access '{log_file_path}'.")
 
 
     # Disable nscd service (if running, stop and disble)
