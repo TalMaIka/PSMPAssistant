@@ -14,7 +14,7 @@ import socket
 from time import sleep
 from collections import deque
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import signal
 import glob
 
@@ -512,7 +512,7 @@ class SystemConfiguration:
     # Debug level verification on sshd_config and TraceLevel on PSMPTrace
     def check_debug_level():
         ssh_config_path = "/etc/ssh/sshd_config"
-        psmp_log_path = "/var/opt/CARKpsmp/logs/PSMPTrace.log"
+        psmp_confxml_path = "/var/opt/CARKpsmp/temp/PVConfiguration.xml"
         changes_made = False
         desired_log_level = "DEBUG3"
 
@@ -538,26 +538,26 @@ class SystemConfiguration:
                         sys.exit(1)
 
         # Check for the TraceLevels update message in PSMPTrace.log
-        trace_message = "PSMPPS170I Configuration parameter [TraceLevels] updated [value: 1,2,3,4,5,6,7]"
+        trace_message = """<ServerSettings TraceLevels="1,2,3,4,5,6,7">"""
         trace_found = False
 
         try:
-            with open(psmp_log_path, 'r') as file:
+            with open(psmp_confxml_path, 'r') as file:
                 for line in file:
                     if trace_message in line:
                         trace_found = True
-                        print(f"{SUCCESS} Correct TraceLevels found in PSMPTrace.log.")
+                        print(f"{SUCCESS} Correct TraceLevels found in PVConfiguration.xml.")
                         break
             if not trace_found:
                 # Note for the user
-                print(f"{ERROR} TraceLevels missing in PSMPTrace.log.")
+                print(f"{ERROR} TraceLevels missing in PVConfiguration.xml")
                 print("\nSetting correct TraceLevels in the PVWA:")
                 print("1. Go to Administration → Options → Privileged Session Management → General Settings.")
                 print("2. Under Server Settings set TraceLevels=1,2,3,4,5,6,7")
                 print("3. Under Connection Client Settings set TraceLevels=1,2")
                 print("* Make sure to Save and Restart psmpsrv service.")
         except FileNotFoundError:
-            print(f"{ERROR} PSMPTrace.log file not found at {psmp_log_path}.")
+            print(f"{ERROR} PVConfiguration.xml file not found at {psmp_confxml_path}.")
 
         return (not changes_made) and trace_found
     
@@ -921,6 +921,11 @@ class RPMAutomation:
                 for file in files if file.startswith('CARK') and file.endswith('.rpm') and '/Trash/files/' not in os.path.join(root, file)
             ]
 
+            # Manual mapping 12.X version to 12.0X
+            parts = psmp_version.split('.')
+            if len(parts) == 2 and parts[0] == "12" and parts[1].isdigit():
+                psmp_version = f"12.0{parts[1]}"
+
             matching_rpms = [rpm for rpm in rpm_files if psmp_version in rpm and "infra" not in rpm]
 
             if not matching_rpms:
@@ -1030,7 +1035,7 @@ class RPMAutomation:
             for line in process.stdout:
                 logging.info(line.strip())  # Display to the customer
                 if "completed with errors" in line:
-                    logging.info(f"{WARNING} Main RPM {rpm_file_path} Installation completed with errors.")
+                    logging.info(f"{ERROR} Main RPM {rpm_file_path} Installation completed with errors.")
                     break
             else:
                 logging.info(f"\n{SUCCESS} Main RPM {rpm_file_path} installed successfully.")
@@ -1072,12 +1077,12 @@ class SideFeatures:
         # Collect inputs from the user
         print(f"{WARNING} MFA Caching requires FQDN of the Domain-Vault user.\n")
         print(f"{WARNING} Target user and target FQDN are case sensitive.\n")
-        vault_user = input("Enter vault user: ")
-        target_user = input("Enter target user: ")
-        target_user_domain = input("Enter target user domain address (leave empty if local): ")
-        target_address = input("Enter target address: ")
-        target_port = input("Enter target port (leave empty if default port 22): ")
-        psm_for_ssh_address = input("Enter PSM for SSH address: ")
+        vault_user = input("Enter vault user: ").strip()
+        target_user = input("Enter target user: ").strip()
+        target_user_domain = input("Enter target user domain address (leave empty if local): ").strip()
+        target_address = input("Enter target address: ").strip()
+        target_port = input("Enter target port (leave empty if default port 22): ").strip()
+        psm_for_ssh_address = input("Enter PSM for SSH address: ").strip()
 
         # Construct the connection string
         connection_string = f"{vault_user}@{target_user}"
@@ -1095,26 +1100,34 @@ class SideFeatures:
         return f"{SUCCESS} The connection string is: "+connection_string
     
     # Log collection function
-    def logs_collect():
+    def logs_collect(skip_debug):
         logging.info("PSMP Logs Collection:")
-        # Check sshd_config file elevated debug level
         Utility.delete_file(Utility.log_filename)
-        if not SystemConfiguration.check_debug_level():
-            sys.exit(1)
+
+        if not skip_debug:
+            SystemConfiguration.check_debug_level()
+
         sleep(2)
 
-        # Load configuration from JSON
         config = Utility.load_config("src/logs_config.json")
         log_folders = config["log_folders"]
         log_categories = config["log_categories"]
         commands = config["commands"]
 
-        # Get script directory and find log files dynamically
         script_directory = os.path.dirname(os.path.abspath(__file__))
         log_file_pattern = os.path.join(script_directory, "PSMPAssistant-*.log")
         log_files_to_collect = glob.glob(log_file_pattern)
 
-        # Print the files to be collected and ask for user confirmation
+        # Define time threshold (3 days ago)
+        three_days_ago = datetime.now() - timedelta(days=3)
+
+        def is_recent_file(file_path):
+            """Returns True if the file was modified in the last 3 days."""
+            return os.path.isfile(file_path) and datetime.fromtimestamp(os.path.getmtime(file_path)) >= three_days_ago
+
+        # Filter only PSMP logs for the last 3 days
+        log_files_to_collect = [f for f in log_files_to_collect if is_recent_file(f)]
+
         print("\nThe following log files will be collected:\n")
         for folder in log_folders:
             print(folder)
@@ -1132,15 +1145,12 @@ class SideFeatures:
             print("Logs collection aborted.")
             return
 
-        # Create main log collection directory
         psmp_logs_directory = os.path.join(script_directory, "PSMPAssistant-Logs")
         os.makedirs(psmp_logs_directory, exist_ok=True)
 
-        # Create category directories dynamically
         for category in log_categories.keys():
             os.makedirs(os.path.join(psmp_logs_directory, category), exist_ok=True)
 
-        # Function to determine log category
         def get_log_category(log_path):
             for category, patterns in log_categories.items():
                 if any(pattern in log_path for pattern in patterns):
@@ -1148,40 +1158,43 @@ class SideFeatures:
             return None
 
         try:
-            # Collect logs and copy to respective directories
             for folder in log_folders:
                 if os.path.exists(folder):
                     category = get_log_category(folder)
                     if category:
                         dest_path = os.path.join(psmp_logs_directory, category, os.path.basename(folder))
+                        os.makedirs(dest_path, exist_ok=True)  # Ensure destination folder exists
 
-                        if os.path.isdir(folder):
-                            # Manually handle the existence of directories
-                            if not os.path.exists(dest_path):
-                                shutil.copytree(folder, dest_path)
+                        # Apply special handling for '/var/opt/CARKpsmp/logs'
+                        if folder.startswith("/var/opt/CARKpsmp/logs"):
+                            if os.path.isdir(folder):
+                                for root, dirs, files in os.walk(folder):
+                                    for file in files:
+                                        src_file = os.path.join(root, file)
+                                        dest_file = os.path.join(dest_path, os.path.relpath(src_file, folder))
+                                        if is_recent_file(src_file):
+                                            os.makedirs(os.path.dirname(dest_file), exist_ok=True)  # Ensure subdir exists
+                                            shutil.copy2(src_file, dest_file)
                             else:
-                                # Handle existing directory manually
-                                for item in os.listdir(folder):
-                                    src_item = os.path.join(folder, item)
-                                    dest_item = os.path.join(dest_path, item)
-                                    if os.path.isdir(src_item):
-                                        shutil.copytree(src_item, dest_item)
-                                    else:
-                                        shutil.copy(src_item, dest_item)
+                                # Collect any files directly in /var/opt/CARKpsmp/logs
+                                if is_recent_file(folder):
+                                    shutil.copy(folder, dest_path)
                         else:
-                            # Truncate log file before copying
-                            truncated_content = Utility.truncate_logs(folder)
-                            if truncated_content is not None:
-                                with open(folder, 'w') as file:
-                                    file.write(truncated_content)
+                            # Collect files normally for other directories
+                            if os.path.isdir(folder):
+                                for root, dirs, files in os.walk(folder):
+                                    for file in files:
+                                        src_file = os.path.join(root, file)
+                                        dest_file = os.path.join(dest_path, file)
+                                        shutil.copy2(src_file, dest_file)
+                            else:
+                                shutil.copy(folder, dest_path)
 
-                            shutil.copy(folder, dest_path)
-
-            # Collect PSMPAssistant-*.log files
+            # Collect PSMP Assistant logs
             for log_file in log_files_to_collect:
                 shutil.copy(log_file, psmp_logs_directory)
 
-            # Capture and save command outputs
+            # Command output collection
             command_output_dir = os.path.join(psmp_logs_directory, "command_output")
             os.makedirs(command_output_dir, exist_ok=True)
 
@@ -1195,8 +1208,8 @@ class SideFeatures:
                 except subprocess.CalledProcessError as e:
                     logging.error(f"Failed to execute command: {command} with error: {e}")
 
-            # Create a zip file with the logs
-            current_date = datetime.now().strftime("-%m-%d-%y-%H:%M")
+            # Zip the collected logs
+            current_date = datetime.now().strftime("-%m-%d-%y_%H-%M")
             zip_filename = f"PSMPAssistant_Logs_{current_date}.zip"
             with zipfile.ZipFile(zip_filename, "w") as zipf:
                 for root, _, files in os.walk(psmp_logs_directory):
@@ -1218,9 +1231,12 @@ class CommandHandler:
 
     # Checking for command-line argument
     def command_line_args(psmp_version):
+        skip_debug = False
         for arg in sys.argv:
+            if "--skip-debug" in sys.argv:
+                skip_debug = True
             if arg == "logs":
-                SideFeatures.logs_collect()
+                SideFeatures.logs_collect(skip_debug)
                 sys.exit(1)
             elif arg == "restore-sshd":
                 SideFeatures.restore_sshd_config_from_backup()
