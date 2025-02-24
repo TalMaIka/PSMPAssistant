@@ -27,6 +27,8 @@
         "PSMPAP100E Failed to connect the PSM SSH Proxy to the Vault",
         "PSMPPS037E PSM SSH Proxy has been terminated.",
         "PSMSC023E LoadLocalUserProfile : Failed to load user profile for local user",
-        "ITATS108E Authentication failure for User"
+        "ITATS108E Authentication failure for User",
+        "076E Password object was not found",
+        "Failed to impersonate as user"
     ]
 }
