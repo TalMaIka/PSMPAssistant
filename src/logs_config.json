@@ -30,5 +30,13 @@
         "sshd -T",
         "rpm -qa | grep CARK",
         "ssh -V"
-    ]
+    ],
+    "log_categories": {
+        "OS": ["/var/log/secure", "/var/log/messages", "sshd_config", "ssh_config", "nsswitch.conf"],
+        "PAM.d": ["sshd", "password-auth", "system-auth"],
+        "PSMP": ["/var/opt/CARKpsmp/logs"],
+        "PSMP/Installation": ["psmp_install.log", "EnvManager.log"],
+        "PSMP/Conf": ["basic_psmpserver.conf", "basic_psmpadbridge.conf"],
+        "PSMP/Temp": ["PVConfiguration.xml", "Policies.xml"]
+    }
 }
