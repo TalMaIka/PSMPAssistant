@@ -16,8 +16,8 @@ from collections import deque
 import logging
 from datetime import datetime
 import signal
-import getpass
 import glob
+
 
 # Define the signal handler
 def handle_signal(signal, frame):
@@ -29,6 +29,9 @@ def handle_signal(signal, frame):
 # Set up the signal handler for SIGINT (Ctrl+C)
 signal.signal(signal.SIGINT, handle_signal)
 
+WARNING='\033[38;5;214m[!]\033[0m'
+ERROR='\033[0;31m[-]\033[0m'
+SUCCESS='\033[0;32m[+]\033[0m'
 
 class Utility:
     
@@ -43,12 +46,33 @@ class Utility:
         ]
     )
 
+    #Clean log file ANSI escape codes
+    @staticmethod
+    def clean_log_file(log_file_path):
+        # Define ANSI escape code pattern
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
+        try:
+            # Read the log file
+            with open(log_file_path, 'r', encoding='utf-8') as file:
+                lines = file.readlines()
+
+            # Remove ANSI escape codes
+            cleaned_lines = [ansi_escape.sub('', line) for line in lines]
+
+            # Rewrite the cleaned content back to the log file
+            with open(log_file_path, 'w', encoding='utf-8') as file:
+                file.writelines(cleaned_lines)
+        
+        except Exception as e:
+            print(f"No log file clean {e}")
+
     # Backup a file by making .bak copy
     @staticmethod
     def backup_file(file_path):
         # Check if file exists
         if not os.path.isfile(file_path):
-            print(f"File '{file_path}' does not exist.")
+            print(f"{WARNING} File '{file_path}' does not exist.")
             return False
         log_filename = datetime.now().strftime("PSMPAssistant-%m-%d-%y-%H:%M.bak")
         backup_path = file_path + "_" + log_filename
@@ -58,7 +82,7 @@ class Utility:
             print(f"Backup created: '{backup_path}'")
             return True
         except Exception as e:
-            print(f"An error occurred while creating the backup: {e}")
+            print(f"{ERROR} An error occurred while creating the backup: {e}")
 
     # File deletion as argument.
     @staticmethod
@@ -66,17 +90,17 @@ class Utility:
         try:
             os.remove(file_path)
         except FileNotFoundError:
-            print(f"File '{file_path}' not found.")
+            print(f"{WARNING} File '{file_path}' not found.")
         except PermissionError:
-            print(f"Permission denied: Unable to delete '{file_path}'.")
+            print(f"{WARNING} Permission denied: Unable to delete '{file_path}'.")
         except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"{ERROR} An error occurred: {e}")
 
     # Verifing privileged user
     @staticmethod
     def check_privileges():
         if os.geteuid() != 0:
-            print("[!] PSMPAssistant tool must be run as root!")
+            print(f"{ERROR} PSMPAssistant tool must be run as root!")
             sleep(2)
             sys.exit(1)
 
@@ -102,7 +126,7 @@ class Utility:
                     lines = lines[-max_lines:]  # Keep only the last 'max_lines' lines
                 return ''.join(lines)
         except Exception as e:
-            logging.error(f"Error truncating {file_path}: {e}")
+            logging.error(f"{ERROR} Error truncating {file_path}: {e}")
             return None
 
     # Load configuration from a JSON file
@@ -117,9 +141,9 @@ class Utility:
             
             try:
                 result = subprocess.check_output(f"systemctl is-active {service_name}", shell=True, universal_newlines=True).strip()
-                return "Running" if result == "active" else "[-] Inactive"
+                return f"{SUCCESS} Running" if result == "active" else f"{ERROR} Inactive"
             except subprocess.CalledProcessError:
-                return "[-] Inactive"
+                return f"{ERROR} Inactive"
             
     # Read a file and return its content. Defaults to text mode with UTF-8 encoding.
     @staticmethod
@@ -128,11 +152,11 @@ class Utility:
             with open(file_path, mode) as file:
                 return file.readlines() if "b" not in mode else file.read()
         except FileNotFoundError:
-            logging.error(f"File not found: {file_path}")
+            logging.error(f"{WARNING} File not found: {file_path}")
         except PermissionError:
-            logging.error(f"Permission denied: {file_path}")
+            logging.error(f"{WARNING} Permission denied: {file_path}")
         except Exception as e:
-            logging.error(f"Error reading {file_path}: {e}")
+            logging.error(f"{ERROR} Error reading {file_path}: {e}")
         return None
 
 
@@ -173,7 +197,7 @@ class SystemConfiguration:
                             
                             return main_version
                         except ValueError:
-                            logging.warning(f"Unable to parse version from: {version}")
+                            logging.warning(f"{WARNING} Unable to parse version from: {version}")
             
             # Return None if no valid version is found
             return None
@@ -184,7 +208,7 @@ class SystemConfiguration:
                 if arg == "install":
                     return None
         except Exception as e:
-            logging.error(f"An error occurred: {e}")
+            logging.error(f"{ERROR} An error occurred: {e}")
             return None
 
     # Get the Linux distribution and version
@@ -269,7 +293,7 @@ class SystemConfiguration:
             return False
 
         except subprocess.CalledProcessError as e:
-            logging.error(f"Failed to retrieve RPM packages: {e}")
+            logging.error(f"{ERROR} Failed to retrieve RPM packages: {e}")
             return False
             
     
@@ -283,16 +307,16 @@ class SystemConfiguration:
         }
 
         # Check PSMP communication with the Vault
-        if service_statuses["psmpsrv"] == "Running":
+        if service_statuses["psmpsrv"] == f"{SUCCESS} Running":
             log_content = Utility.read_file("/var/opt/CARKpsmp/logs/PSMPConsole.log")
             if log_content:
                 log_content = "".join(log_content)
                 if "is up and working with Vault" in log_content and \
                 "Sockets server is down" not in log_content and \
                 "PSM SSH Proxy has been terminated" not in log_content:
-                    service_statuses["psmpsrv"] = "Running and communicating with Vault"
+                    service_statuses["psmpsrv"] = f"{SUCCESS} Running and communicating with Vault"
                 else:
-                    service_statuses["psmpsrv"] = "[-] Running but not communicating with Vault"
+                    service_statuses["psmpsrv"] = f"{ERROR} Running but not communicating with Vault"
 
         return service_statuses
 
@@ -315,11 +339,11 @@ class SystemConfiguration:
                         vault_address = line.split("=")[1].strip()
                         break
         except FileNotFoundError:
-            logging.error("[-] Vault.ini file not found.")
+            logging.error(f"{ERROR} Vault.ini file not found.")
             sys.exit(1)
 
         if not vault_address:
-            logging.error("[-] Vault address is empty.")
+            logging.error(f"{ERROR} Vault address is empty.")
             sys.exit(1)
 
         return vault_address.split(",")[0].strip()  # Return the first (Primary) address
@@ -328,17 +352,17 @@ class SystemConfiguration:
     def verify_vault_address(vault_address,file_path):
         user_ip = input(f"Is the Vault address {vault_address} correct? (y/n): ").strip().lower()
         if user_ip.lower() != 'y' and user_ip.lower() != "yes":
-            logging.info(f"Wrong Vault address, Kindly edit the address under '{file_path}'.")
+            logging.info(f"{ERROR} Wrong Vault address, Kindly edit the address under '{file_path}'.")
             sys.exit(1)
 
     # Check the communication between PSMP and Vault server
     def check_vault_comm(service_status):
         vault_ini_path = "/etc/opt/CARKpsmp/vault/vault.ini"
-        if service_status["psmpsrv"] == "[-] Inactive" or service_status["psmpsrv"] == "[-] Running but not communicating with Vault":
-            logging.info("[-] The PSMP service is inactive.")
+        if service_status["psmpsrv"] == f"{ERROR} Inactive" or service_status["psmpsrv"] == f"{ERROR} Running but not communicating with Vault":
+            logging.info(f"{ERROR} The PSMP service is inactive.")
             # Communication check with vault server
             if not SystemConfiguration.is_nc_installed():
-                logging.info("[!] Netcat (nc) is not installed. Please install it to proceed with the communication check.")
+                logging.info(f"{WARNING} Netcat (nc) is not installed. Please install it to proceed with the communication check.")
                 sys.exit(1)
 
             # Fetch the vault address from the /opt/CARKpsmp/vault.ini file
@@ -353,22 +377,22 @@ class SystemConfiguration:
             sleep(2)
             try:
                 subprocess.run(["nc", "-z", vault_address, "1858"], check=True)
-                logging.info("[+] Communication to the vault is successful.")
+                logging.info(f"{SUCCESS} Communication to the vault is successful.")
                 sleep(1)
-                logging.info("[!] Restarting PSMP service...")
+                logging.info(f"{WARNING} Restarting PSMP service...")
                 try:
                     subprocess.run(["systemctl", "restart", "psmpsrv"], check=True, timeout=30)
                     service_status = SystemConfiguration.check_services_status()
                     if service_status["psmpsrv"] == "[-] Inactive" or service_status["psmpsrv"] == "[-] Running but not communicating with Vault":
-                        logging.info("[-] PSMP service issue.")
+                        logging.info(f"{ERROR} PSMP service issue.")
                     else:
                         return True
                 except subprocess.CalledProcessError as e:
-                    logging.info(f"Unable to restart service: {e}")
+                    logging.info(f"{WARNING} Unable to restart service: {e}")
                 except subprocess.TimeoutExpired as e:
-                    logging.error(f"[!] Timeout reached.")
+                    logging.error(f"{WARNING} Timeout reached.")
             except subprocess.CalledProcessError as e:
-                logging.info(f"[-] No communication with the vault.")
+                logging.info(f"{ERROR} No communication with the vault.")
                 sys.exit(1)
 
     # OpenSSH version check regarding the PSMP compatibility
@@ -395,9 +419,9 @@ class SystemConfiguration:
                 if ssh_version >= 7.7:
                     return True, "", ssh_version
                 else:
-                    return False, f"[!] OpenSSH version is: {ssh_version}, required version 7.7 and above.", ssh_version
+                    return False, f"{WARNING} OpenSSH version is: {ssh_version}, required version 7.7 and above.", ssh_version
             else:
-                return False, "Failed to determine OpenSSH version.", None
+                return False, f"{ERROR} Failed to determine OpenSSH version.", None
         except subprocess.CalledProcessError as e:
             return False, f"Error: {e}", None
         
@@ -428,7 +452,7 @@ class SystemConfiguration:
                 for line in file:
                     # Check if the file is managed by a configuration tool
                     if managed_pattern.search(line):
-                        logging.info(f"[!] The sshd_config is managed by a configuration tool: {line.strip()}\n     Make sure to update the latest version if change were made.\n")
+                        logging.info(f"{WARNING} The sshd_config is managed by a configuration tool: {line.strip()}\n     Make sure to update the latest version if change were made.\n")
 
                     # Check for PSMP Authentication Configuration Block Start
                     if psmp_auth_pattern.match(line):
@@ -462,26 +486,26 @@ class SystemConfiguration:
 
         # Evaluate if repair is required based on the conditions
         if not found_psmp_auth_block and integrated_psmp:
-            logging.info("[-] PSMP authentication block not found.")
+            logging.info(f"{ERROR} PSMP authentication block not found.")
             REPAIR_REQUIRED = True
         
         if not permit_empty_pass and not integrated_psmp:
-            logging.info("[!] PermitEmptyPasswords missing.")
+            logging.info(f"{WARNING} PermitEmptyPasswords missing.")
             REPAIR_REQUIRED = True
 
         if found_allow_user:
-            logging.info("[!] AllowUser mentioned in sshd_config and should not be present.")
+            logging.info(f"{WARNING} AllowUser mentioned in sshd_config and should not be present.")
 
         if not pubkey_auth:
-            logging.info("[!] PubkeyAuthentication is not enabled.")
+            logging.info(f"{WARNING} PubkeyAuthentication is not enabled.")
         
         if not found_pubkey_accepted_algorithms:
-            logging.info("[!] MFA Caching using RSA disabled, required 'PubkeyAcceptedAlgorithms +ssh-rsa' in sshd_config.")
+            logging.info(f"{WARNING} MFA Caching using RSA disabled, required 'PubkeyAcceptedAlgorithms +ssh-rsa' in sshd_config.")
 
         if not REPAIR_REQUIRED: 
-            logging.info("[+] No misconfiguration found related to sshd_config.")
+            logging.info(f"{SUCCESS} No misconfiguration found related to sshd_config.")
         else:
-            logging.info("[-] SSHD misconfiguration found.")
+            logging.info(f"{ERROR} SSHD misconfiguration found.")
             sleep(2)
 
             
@@ -501,16 +525,16 @@ class SystemConfiguration:
 
             # Check if LogLevel is commented out and appears exactly once
             if stripped_line.startswith("#") and stripped_line.count("LogLevel") == 1:
-                print("[!] LogLevel should be uncommented; required DEBUG3.")
+                print(f"{WARNING} LogLevel should be uncommented; required DEBUG3.")
                 sleep(2)
                 sys.exit(1)
 
             # Check if LogLevel is uncommented and valid
             if stripped_line.startswith("LogLevel "):
                 if stripped_line == f"LogLevel {desired_log_level}":
-                    print("[+] Correct SSHD LogLevel found in sshd_config")
+                    print(f"{SUCCESS} Correct SSHD LogLevel found in sshd_config")
                 elif stripped_line == "LogLevel INFO":
-                        print("[!] LogLevel found as INFO; required DEBUG3.")
+                        print(f"{WARNING} LogLevel found as INFO; required DEBUG3.")
                         sys.exit(1)
 
         # Check for the TraceLevels update message in PSMPTrace.log
@@ -522,18 +546,18 @@ class SystemConfiguration:
                 for line in file:
                     if trace_message in line:
                         trace_found = True
-                        print("[+] Correct TraceLevels found in PSMPTrace.log.")
+                        print(f"{SUCCESS} Correct TraceLevels found in PSMPTrace.log.")
                         break
             if not trace_found:
                 # Note for the user
-                print("[-] TraceLevels missing in PSMPTrace.log.")
+                print(f"{ERROR} TraceLevels missing in PSMPTrace.log.")
                 print("\nSetting correct TraceLevels in the PVWA:")
                 print("1. Go to Administration → Options → Privileged Session Management → General Settings.")
                 print("2. Under Server Settings set TraceLevels=1,2,3,4,5,6,7")
                 print("3. Under Connection Client Settings set TraceLevels=1,2")
                 print("* Make sure to Save and Restart psmpsrv service.")
         except FileNotFoundError:
-            print(f"PSMPTrace.log file not found at {psmp_log_path}.")
+            print(f"{ERROR} PSMPTrace.log file not found at {psmp_log_path}.")
 
         return (not changes_made) and trace_found
     
@@ -553,13 +577,13 @@ class SystemConfiguration:
                 if cores > 0:
                     load_percentage = ((load_avg / cores) * 100) % 100
                     if load_percentage > 100:
-                        cpu_info = f"High CPU Load: {load_percentage:.2f}% (Overloaded)"
+                        cpu_info = f"{WARNING} High CPU Load: {load_percentage:.2f}%"
                     else:
-                        cpu_info = f"CPU Load within the normal limits."
+                        cpu_info = f"{SUCCESS} CPU Load within the normal limits."
                 else:
-                    cpu_info = "Unable to determine CPU core count."
+                    cpu_info = f"{WARNING} Unable to determine CPU core count."
             else:
-                cpu_info = f"Error retrieving CPU load: {cpu_result.stderr.strip()}"
+                cpu_info = f"{WARNING} Error retrieving CPU load: {cpu_result.stderr.strip()}"
 
             # Get Disk Space
             disk_result = subprocess.run(["df", "-h"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -573,17 +597,17 @@ class SystemConfiguration:
                         if usage_percent > 85:  # Check if usage is more than 85%
                             high_usage_partitions.append(f"{parts[0]}: {usage_percent}% used (Mounted on {parts[5]})")
                 if high_usage_partitions:
-                    disk_info = "High Disk Usage:\n" + "\n".join(high_usage_partitions)
+                    disk_info = f"{WARNING} High Disk Usage:\n" + "\n".join(high_usage_partitions)
                 else:
-                    disk_info = "Sufficient disk space."
+                    disk_info = f"{SUCCESS} Sufficient disk space."
             else:
-                disk_info = f"Error retrieving disk space: {disk_result.stderr.strip()}"
+                disk_info = f"{WARNING} Error retrieving disk space: {disk_result.stderr.strip()}"
 
             # Combine Results
             return f"{cpu_info}\n{disk_info}"
         
         except Exception as e:
-            return f"Error retrieving system status: {e}"
+            return f"{WARNING} Error retrieving system status: {e}"
 
     # Search the secure amd messages log file for known patterns
     def search_logs_patterns(distro_name):
@@ -608,9 +632,9 @@ class SystemConfiguration:
                         if any(regex.search(line) for regex in secure_logs_patterns):
                             found_entries["secure_logs"].append(line.strip())
             except FileNotFoundError:
-                logging.warning(f"Log file {log_file} not found.")
+                logging.warning(f"{WARNING} Log file {log_file} not found.")
             except Exception as e:
-                logging.error(f"Error reading log file {log_file}: {e}")
+                logging.error(f"{WARNING} Error reading log file {log_file}: {e}")
 
         # Search in PSMPTrace logs
         psmp_log_file = config["log_files"].get("PSMPTrace")
@@ -621,9 +645,9 @@ class SystemConfiguration:
                         if any(pattern in line for pattern in psmp_trace_patterns):
                             found_entries["psmp_logs"].append(line.strip()) 
             except FileNotFoundError:
-                logging.warning(f"PSMPTrace log file {psmp_log_file} not found.")
+                logging.info(f"{WARNING} PSMPTrace log file {psmp_log_file} not found.")
             except Exception as e:
-                logging.error(f"Error reading PSMPTrace log file {psmp_log_file}: {e}")
+                logging.info(f"{WARNING} Error reading PSMPTrace log file {psmp_log_file}: {e}")
 
         # Print results
         logging.info("\n=== Secure Log ===")
@@ -639,7 +663,7 @@ class SystemConfiguration:
         # Check if the hostname includes 'localhost'
         sleep(2)
         if 'localhost' in hostname.lower():
-            logging.info(f"\n[!] Hostname: '{hostname}' as default value, Change it to unique hostname to eliminate future issues.")
+            logging.info(f"\n{WARNING} Hostname: '{hostname}' as default value, Change it to unique hostname to eliminate future issues.")
         return hostname
 
     #SELinux check
@@ -654,9 +678,9 @@ class SystemConfiguration:
             logging.info(result.stdout.strip())
             
         except subprocess.CalledProcessError:
-            logging.info("SELinux is not installed or not available on this system.")
+            logging.info(f"{WARNING} SELinux is not installed or not available on this system.")
         except FileNotFoundError:
-            logging.info("The 'sestatus' command is not found. SELinux may not be installed.")
+            logging.info(f"{WARNING} The 'sestatus' command is not found. SELinux may not be installed.")
         if "disabled" not in result.stdout.strip():
             try:
                 # Use a deque to keep the latest 10 matching lines
@@ -678,11 +702,11 @@ class SystemConfiguration:
                         else:
                             logging.info(line)
                 else:
-                    logging.info("[+] SElinux is not preventing PSMP components.")
+                    logging.info(f"{SUCCESS} SElinux is not preventing PSMP components.")
                 
                 # Check if SELinux is enforcing
                 if "SELinux status:                 enabled" in result.stdout and "Current mode:                   enforcing" in result.stdout:
-                    logging.info("SELinux is in enforcing mode.\n")
+                    logging.info(f"{WARNING} SELinux is in enforcing mode.\n")
 
                     # Prompt the user for agreement to temporarily disable SELinux
                     user_input = input("SELinux is enforcing. Temporarily disable until reboot? (y/n):").strip().lower()
@@ -691,17 +715,16 @@ class SystemConfiguration:
                             # Disable SELinux temporarily by setting it to permissive
                             logging.info("Disabling SELinux temporarily (setenforce 0)...")
                             subprocess.run(['setenforce', '0'], check=True)
-                            logging.info("[!] SELinux has been temporarily disabled.")
+                            logging.info(f"{WARNING} SELinux has been temporarily disabled.")
                         except subprocess.CalledProcessError as e:
-                            logging.error(f"Failed to disable SELinux: {e}")
+                            logging.error(f"{WARNING} Failed to disable SELinux: {e}")
                     else:
-                        logging.info("SELinux will remain in enforcing mode.")
-
+                        logging.info(f"{WARNING} SELinux will remain in enforcing mode.")
 
             except FileNotFoundError:
-                logging.info(f"Error: The file '{log_file_path}' does not exist.")
+                logging.info(f"{ERROR} The file '{log_file_path}' does not exist.")
             except PermissionError:
-                logging.info(f"Error: You do not have permission to access '{log_file_path}'.")
+                logging.info(f"{ERROR} You do not have permission to access '{log_file_path}'.")
 
 
     # Disable nscd service (if running, stop and disble)
@@ -716,9 +739,9 @@ class SystemConfiguration:
                     # Stop and disable the nscd service
                     subprocess.run(["systemctl", "stop", "nscd"], check=True)
                     subprocess.run(["systemctl", "disable", "nscd"], check=True)
-                    logging.info("NSCD Stopped and Disabled.")
+                    logging.info("{WARNING} NSCD Stopped and Disabled.")
             else:
-                logging.info("NSCD service is not running as expected.")
+                logging.info(f"{SUCCESS} NSCD service is not running as expected.")
         except subprocess.CalledProcessError as e:
             logging.info(f"Error: {e}")
 
@@ -751,7 +774,7 @@ class SystemConfiguration:
         
         # Choose expected config based on version
         if SystemConfiguration.is_integrated(psmp_version) or psmp_version > 13.0:
-                logging.info("nsswitch.conf is correctly configured.")
+                logging.info(f"{SUCCESS} nsswitch.conf is correctly configured.")
                 return False
         if psmp_version >= 12.2:
             expected_config = expected_config_v12_2_or_newer
@@ -783,13 +806,13 @@ class SystemConfiguration:
 
         # If discrepancies are found, prompt for confirmation
         if misconfigurations:
-            logging.info("[-] Misconfigurations found in /etc/nsswitch.conf:")
+            logging.info(f"{ERROR} Misconfigurations found in /etc/nsswitch.conf:")
             REPAIR_REQUIRED = True
             for key, actual, expected in misconfigurations:
                 logging.info(f" - {key}: found '{actual}', expected '{expected}'")
             return True
         else:
-            logging.info("[+] The nsswitch.conf is correctly configured.")
+            logging.info(f"{SUCCESS} The nsswitch.conf is correctly configured.")
             return False
         
     # Validating machine configuration
@@ -797,8 +820,8 @@ class SystemConfiguration:
     def machine_conf_valid(psmp_versions,psmp_version,REPAIR_REQUIRED):
         # Check if PSMP installed.
         if not psmp_version:
-            logging.info("\n[-] No PSMP version found.")
-            logging.info("\n[!] Kindly proceed with PSMP RPM repair by executing: 'python3 PSMPAssistant.py repair'")
+            logging.info(f"\n{ERROR} No PSMP version found.")
+            logging.info(f"\n{WARNING} Kindly proceed with PSMP RPM repair by executing: 'python3 PSMPAssistant.py repair'")
             sys.exit(1)
             
         # Get the Linux distribution and version
@@ -807,9 +830,9 @@ class SystemConfiguration:
         distro_name, distro_version = SystemConfiguration.get_linux_distribution()
         # Check compatibility
         if SystemConfiguration.is_supported(psmp_versions, psmp_version, distro_name, distro_version):
-            logging.info(f"PSMP Version {psmp_version} Supports {distro_name} {distro_version}")
+            logging.info(f"{SUCCESS} PSMP Version {psmp_version} Supports {distro_name} {distro_version}")
         else:
-            logging.info(f"PSMP Version {psmp_version} Does Not Support {distro_name} {distro_version}")
+            logging.info(f"{ERROR} PSMP Version {psmp_version} Does Not Support {distro_name} {distro_version}")
             # Fixes typo in the version numeric value
             logging.info(f"Please refer to the PSMP documentation for supported versions.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/Content/PAS%20SysReq/System%20Requirements%20-%20PSMP.htm")
             
@@ -836,7 +859,7 @@ class SystemConfiguration:
 
         #Check for REPAIR_REQUIRED flag
         if REPAIR_REQUIRED:
-            logging.info("\n[!] RPM Repair required, for repair automation execute ' python3 PSMPAssistant.py repair '")
+            logging.info(f"\n{WARNING} RPM Repair required, for repair automation execute ' python3 PSMPAssistant.py repair '")
             sleep(2)
             sys.exit(1)
 
@@ -858,9 +881,9 @@ class SystemConfiguration:
         SystemConfiguration.disable_nscd_service()
 
         # Offer the customer to repair the PSMP Installation RPM
-        if service_status.get('psmpsrv', 'Unavailable') != "Running and communicating with Vault":
+        if service_status.get('psmpsrv', 'Unavailable') != f"{SUCCESS} Running and communicating with Vault":
             if not nsswitch_changes:
-                logging.info("\n[!] Recommended to proceed with a RPM installation repair, for repair automation execute ' python3 PSMPAssistant.py repair '")
+                logging.info(f"\n{WARNING} Recommended to proceed with a RPM installation repair, for repair automation execute ' python3 PSMPAssistant.py repair '")
 
 
 class RPMAutomation:
@@ -876,10 +899,10 @@ class RPMAutomation:
         missing_files = [file for file in required_files if not os.path.exists(file)]
 
         if missing_files:
-            logging.info("[-] Missing installation files: %s", ", ".join(missing_files))
+            logging.info(f"{WARNING} Missing installation files: %s", ", ".join(missing_files))
             return False
 
-        logging.info("[+] All required installation files are present.")
+        logging.info(f"{SUCCESS} All required installation files are present.")
         return True
         
 
@@ -901,7 +924,7 @@ class RPMAutomation:
             matching_rpms = [rpm for rpm in rpm_files if psmp_version in rpm and "infra" not in rpm]
 
             if not matching_rpms:
-                logging.info(f"No RPM file found matching version {psmp_version}. Please ensure the correct version is installed.")
+                logging.info(f"{ERROR} No RPM file found matching version {psmp_version}. Please ensure the correct version is installed.")
                 return
 
             # Step 2: Select first matching RPM and validate installation folder
@@ -977,12 +1000,12 @@ class RPMAutomation:
 
                 try:
                     subprocess.run(["mv", "-f", "user.cred", "user.cred.entropy", install_folder], check=True)
-                    logging.info("\n[+] user.cred and user.cred.entropy copied to installation folder.")
+                    logging.info(f"\n{SUCCESS} user.cred and user.cred.entropy copied to installation folder.")
                 except Exception as e:
                     logging.error(f"Error moving cred files: {e}")
                     return
             else:
-                logging.info(f"\nCreateCredFile not found in {install_folder}")
+                logging.info(f"\n{ERROR} CreateCredFile not found in {install_folder}")
 
             # Step 6: Repair RPM
             rpm_file_path = os.path.join(install_folder, matching_rpms[0])
@@ -1007,10 +1030,10 @@ class RPMAutomation:
             for line in process.stdout:
                 logging.info(line.strip())  # Display to the customer
                 if "completed with errors" in line:
-                    logging.info(f"[-] Main RPM {rpm_file_path} Installation completed with errors.")
+                    logging.info(f"{WARNING} Main RPM {rpm_file_path} Installation completed with errors.")
                     break
             else:
-                logging.info(f"\n[+] Main RPM {rpm_file_path} installed successfully.")
+                logging.info(f"\n{SUCCESS} Main RPM {rpm_file_path} installed successfully.")
 
         except Exception as e:
             logging.error(f"An error occurred during the RPM repair process: {e}")
@@ -1033,10 +1056,10 @@ class SideFeatures:
             if Utility.backup_file(current_sshd_config_path):
                 # Move the backup insted of the curent sshd
                 subprocess.run(["cp", "-i", backup_file_path, current_sshd_config_path])
-                logging.info("Successfully restored sshd_config from backup.")
+                logging.info(f"{SUCCESS} Successfully restored sshd_config from backup.")
 
         except FileNotFoundError:
-            logging.error("Backup file not found.")
+            logging.error(f"{WARNING} Backup file not found.")
         except Exception as e:
             logging.error(f"Error: {e}")
 
@@ -1047,8 +1070,8 @@ class SideFeatures:
         print("More information: https://cyberark.my.site.com/s/article/PSM-for-SSH-Syntax-Cheat-Sheet")
         print("Please provide the following details to generate the connection string:\n")
         # Collect inputs from the user
-        print("[!] MFA Caching requires FQDN of the Domain-Vault user.\n")
-        print("[!] Target user and target FQDN are case sensitive.\n")
+        print(f"{WARNING} MFA Caching requires FQDN of the Domain-Vault user.\n")
+        print(f"{WARNING} Target user and target FQDN are case sensitive.\n")
         vault_user = input("Enter vault user: ")
         target_user = input("Enter target user: ")
         target_user_domain = input("Enter target user domain address (leave empty if local): ")
@@ -1069,7 +1092,7 @@ class SideFeatures:
         
         connection_string += f"@{psm_for_ssh_address}"
 
-        return "The connection string is: "+connection_string
+        return f"{SUCCESS} The connection string is: "+connection_string
     
     # Log collection function
     def logs_collect():
@@ -1181,7 +1204,7 @@ class SideFeatures:
                         file_path = os.path.join(root, file)
                         zipf.write(file_path, os.path.relpath(file_path, psmp_logs_directory))
 
-            print(f"Logs copied and zip file created: {zip_filename}")
+            print(f"{SUCCESS} Logs copied and zip file created: {zip_filename}")
 
         except Exception as e:
             print(f"An error occurred: {e}")
@@ -1212,7 +1235,7 @@ class CommandHandler:
                 RPMAutomation.rpm_repair(psmp_version)
                 sys.exit(1)
         else:
-            print("[-] Invalid agrument.")
+            print(f"{ERROR} Invalid agrument.")
             sys.exit(1)
 
 class PSMPAssistant:
@@ -1241,6 +1264,8 @@ def main():
         psmp_assistant.execute_command()
     else:
         psmp_assistant.run_diagnostics()
+
+    Utility.clean_log_file(Utility.log_filename)
     
 if __name__ == "__main__":
     main()
