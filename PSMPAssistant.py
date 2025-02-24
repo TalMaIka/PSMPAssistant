@@ -445,14 +445,14 @@ class SystemConfiguration:
         pubkey_algorithms_pattern = re.compile(r"^\s*PubkeyAcceptedAlgorithms")
         empty_pass_pattern = re.compile(r"^\s*PermitEmptyPasswords\s+yes")
         pubkey_auth_pattern = re.compile(r"^\s*PubkeyAuthentication\s+yes")
-        managed_pattern = re.compile(r"(Ansible|Puppet|Chef)\s+managed")
+        managed_pattern = re.compile(r"(Ansible|Puppet|Chef)\s")
 
         try:
             with open(sshd_config_path, "r") as file:
                 for line in file:
                     # Check if the file is managed by a configuration tool
                     if managed_pattern.search(line):
-                        logging.info(f"{WARNING} The sshd_config is managed by a configuration tool: {line.strip()}\n     Make sure to update the latest version if change were made.\n")
+                        logging.info(f"{WARNING} The sshd_config is managed by a configuration tool: {line.strip()}\n  Make sure to update the latest version if change were made.")
 
                     # Check for PSMP Authentication Configuration Block Start
                     if psmp_auth_pattern.match(line):
