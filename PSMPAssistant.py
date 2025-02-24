@@ -76,7 +76,7 @@ class Utility:
     @staticmethod
     def check_privileges():
         if os.geteuid() != 0:
-            print("\n[!] PSMPAssistant tool must be run as root!")
+            print("[!] PSMPAssistant tool must be run as root!")
             sleep(2)
             sys.exit(1)
 
@@ -94,7 +94,7 @@ class Utility:
 
     # Collect PSMP machine logs and creating a zip file
     @staticmethod
-    def truncate_logs(file_path, max_lines=1500):
+    def truncate_logs(file_path, max_lines=3000):
         try:
             with open(file_path, 'r') as file:
                 lines = file.readlines()
@@ -116,7 +116,7 @@ class Utility:
     def get_service_status(service_name):
             
             try:
-                result = subprocess.check_output(f"systemctl is-active {service_name}", shell=True, text=True).strip()
+                result = subprocess.check_output(f"systemctl is-active {service_name}", shell=True, universal_newlines=True).strip()
                 return "Running" if result == "active" else "[-] Inactive"
             except subprocess.CalledProcessError:
                 return "[-] Inactive"
@@ -275,7 +275,6 @@ class SystemConfiguration:
     
     # Check the status of PSMP and SSHD services.
     def check_services_status():
-        logging.info("\nServices Availability Check:")
         sleep(2)
 
         service_statuses = {
@@ -355,20 +354,19 @@ class SystemConfiguration:
             try:
                 subprocess.run(["nc", "-z", vault_address, "1858"], check=True)
                 logging.info("[+] Communication to the vault is successful.")
-
-                restart_confirmation = input("Restart PSMP service? (y/n): ")
-                if restart_confirmation.lower() == "y" or restart_confirmation.lower() == "yes":
-                    logging.info("[+] Restarting PSMP service...")
-                    try:
-                        subprocess.run(["systemctl", "restart", "psmpsrv"], check=True, timeout=30)
-                        service_status = SystemConfiguration.check_services_status()
-                        if service_status["psmpsrv"] == "[-] Inactive" or service_status["psmpsrv"] == "[-] Running but not communicating with Vault":
-                            logging.info("[-] PSMP service issue.")
-                        else:
-                            return True
-                    except subprocess.CalledProcessError as e:
-                        logging.info(f"Unable to restart service: {e}")
-                        sys.exit(1)
+                sleep(1)
+                logging.info("[!] Restarting PSMP service...")
+                try:
+                    subprocess.run(["systemctl", "restart", "psmpsrv"], check=True, timeout=30)
+                    service_status = SystemConfiguration.check_services_status()
+                    if service_status["psmpsrv"] == "[-] Inactive" or service_status["psmpsrv"] == "[-] Running but not communicating with Vault":
+                        logging.info("[-] PSMP service issue.")
+                    else:
+                        return True
+                except subprocess.CalledProcessError as e:
+                    logging.info(f"Unable to restart service: {e}")
+                except subprocess.TimeoutExpired as e:
+                    logging.error(f"[!] Timeout reached.")
             except subprocess.CalledProcessError as e:
                 logging.info(f"[-] No communication with the vault.")
                 sys.exit(1)
@@ -846,6 +844,7 @@ class SystemConfiguration:
         SystemConfiguration.search_logs_patterns(distro_name)
 
         # Check service status
+        logging.info("\nServices Availability Check:")
         service_status = SystemConfiguration.check_services_status()
 
         # Check if service status is Inactive
@@ -889,8 +888,8 @@ class RPMAutomation:
         logging.info(f"\nPSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
         logging.info("\nPSMP RPM Installation Repair:")
         logging.info(f"PSMP Version Detected: {psmp_version}")
+        logging.info("Searching the machine for version matching installation files...")
         sleep(2)
-
         try:
             # Step 1: Search for RPM files and filter by PSMP version in one loop
             rpm_files = [
@@ -972,13 +971,13 @@ class RPMAutomation:
             create_cred_file_path = os.path.join(install_folder, "CreateCredFile")
             if os.path.exists(create_cred_file_path):
                 os.chmod(create_cred_file_path, 0o755)
-                logging.info("\nCreateCredFile executed.\n\033[91m[!] Make sure to enable Entropy File by entering 'yes'\033[0m")
+                logging.info("\nCreateCredFile executed.\n\033[91m[!] Make sure to set Entropy File by entering 'yes'\033[0m")
                 sleep(1)
                 subprocess.run([create_cred_file_path, "user.cred"])
 
                 try:
                     subprocess.run(["mv", "-f", "user.cred", "user.cred.entropy", install_folder], check=True)
-                    logging.info("\nuser.cred and user.cred.entropy copied to installation folder.")
+                    logging.info("\n[+] user.cred and user.cred.entropy copied to installation folder.")
                 except Exception as e:
                     logging.error(f"Error moving cred files: {e}")
                     return
@@ -1134,7 +1133,18 @@ class SideFeatures:
                         dest_path = os.path.join(psmp_logs_directory, category, os.path.basename(folder))
 
                         if os.path.isdir(folder):
-                            shutil.copytree(folder, dest_path, dirs_exist_ok=True)
+                            # Manually handle the existence of directories
+                            if not os.path.exists(dest_path):
+                                shutil.copytree(folder, dest_path)
+                            else:
+                                # Handle existing directory manually
+                                for item in os.listdir(folder):
+                                    src_item = os.path.join(folder, item)
+                                    dest_item = os.path.join(dest_path, item)
+                                    if os.path.isdir(src_item):
+                                        shutil.copytree(src_item, dest_item)
+                                    else:
+                                        shutil.copy(src_item, dest_item)
                         else:
                             # Truncate log file before copying
                             truncated_content = Utility.truncate_logs(folder)
@@ -1222,6 +1232,8 @@ class PSMPAssistant:
 
 def main():
     Utility.print_logo()
+
+    Utility.check_privileges()
 
     psmp_assistant = PSMPAssistant()
     
