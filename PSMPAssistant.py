@@ -866,6 +866,24 @@ class SystemConfiguration:
 
 class RPMAutomation:
 
+    # Verify installation files existing
+    def verify_installation_files(install_folder):
+        required_files = [
+            f"{install_folder}/CreateCredFile",
+            f"{install_folder}/vault.ini",
+            f"{install_folder}/psmpparms.sample"
+        ]
+        
+        missing_files = [file for file in required_files if not os.path.exists(file)]
+
+        if missing_files:
+            logging.info("[-] Missing installation files: %s", ", ".join(missing_files))
+            return False
+
+        logging.info("[+] All required installation files are present.")
+        return True
+        
+
     # Automates RPM repair for the specified PSMP version.
     def rpm_repair(psmp_version):
         logging.info(f"\nPSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
@@ -894,6 +912,9 @@ class RPMAutomation:
 
             if input(f"Is the installation folder {install_folder} correct? (y/n): ").strip().lower() not in ['y', 'yes']:
                 logging.info("Installation folder not confirmed by user. Exiting.")
+                return
+            # Verifing existance of all installation files.
+            if not RPMAutomation.verify_installation_files(install_folder):
                 return
 
             # Step 3: Fetch and verify vault.ini file
@@ -951,16 +972,16 @@ class RPMAutomation:
             create_cred_file_path = os.path.join(install_folder, "CreateCredFile")
             if os.path.exists(create_cred_file_path):
                 os.chmod(create_cred_file_path, 0o755)
-                logging.info("\nCreateCredFile executed.\n")
-                vaultAdmin = input("Vault Username ==> ")
-                vaultPass = getpass.getpass("Vault Password (will be encrypted in secret file) ==> ")
-                subprocess.run([create_cred_file_path, "user.cred", "Password", "-Username", vaultAdmin, "-Password", vaultPass, "-EntropyFile"])
+                logging.info("\nCreateCredFile executed.\n\033[91m[!] Make sure to enable Entropy File by entering 'yes'\033[0m")
+                sleep(1)
+                subprocess.run([create_cred_file_path, "user.cred"])
 
                 try:
                     subprocess.run(["mv", "-f", "user.cred", "user.cred.entropy", install_folder], check=True)
                     logging.info("\nuser.cred and user.cred.entropy copied to installation folder.")
                 except Exception as e:
                     logging.error(f"Error moving cred files: {e}")
+                    return
             else:
                 logging.info(f"\nCreateCredFile not found in {install_folder}")
 
@@ -1115,6 +1136,12 @@ class SideFeatures:
                         if os.path.isdir(folder):
                             shutil.copytree(folder, dest_path, dirs_exist_ok=True)
                         else:
+                            # Truncate log file before copying
+                            truncated_content = Utility.truncate_logs(folder)
+                            if truncated_content is not None:
+                                with open(folder, 'w') as file:
+                                    file.write(truncated_content)
+
                             shutil.copy(folder, dest_path)
 
             # Collect PSMPAssistant-*.log files
