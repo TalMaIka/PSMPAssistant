@@ -52,14 +52,6 @@ python3 PSMPAssistant.py string
 ```
 <img src="https://i.postimg.cc/sf8w1NVL/string.gif" alt="Tool landing page">
 
-### Restoring SSHD Configuration
-
-To restore the SSHD configuration from a backup, use the `restore-sshd` argument:
-
-```bash
-python3 PSMPAssistant.py restore-sshd
-```
-
 
 ## Features
 
@@ -97,9 +89,6 @@ python3 PSMPAssistant.py restore-sshd
 ### RPM Repair
 - Automates the pre-installation steps by locating the RPM folder *matching* the PSMP installed version and executing the repair.
  + https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/before-installing-psmp.htm
-
-### SSHD Configuration Restoration
-- Restores the SSHD configuration from a backup file located in opt/CARKpsmp/backup/sshd_config_backup.
 
 ### PSMP Connection String Generation
 - Generates a PSMP connection string based on user input. 
