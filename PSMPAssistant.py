@@ -33,10 +33,11 @@ WARNING='\033[38;5;214m[!]\033[0m'
 ERROR='\033[0;31m[-]\033[0m'
 SUCCESS='\033[0;32m[+]\033[0m'
 
+
 class Utility:
-    
+
     # Logging to write to the dynamically named file and the console
-    log_filename = datetime.now().strftime("PSMPAssistant-%m-%d-%y-%H:%M.log")
+    log_filename = datetime.now().strftime("PSMPAssistant-%m-%d-%y_%H-%M.log")
     logging.basicConfig(
         level=logging.INFO,  
         format='%(message)s',  
@@ -66,23 +67,6 @@ class Utility:
         
         except Exception as e:
             print(f"No log file clean {e}")
-
-    # Backup a file by making .bak copy
-    @staticmethod
-    def backup_file(file_path):
-        # Check if file exists
-        if not os.path.isfile(file_path):
-            print(f"{WARNING} File '{file_path}' does not exist.")
-            return False
-        log_filename = datetime.now().strftime("PSMPAssistant-%m-%d-%y-%H:%M.bak")
-        backup_path = file_path + "_" + log_filename
-        
-        try:
-            shutil.copy2(file_path, backup_path)
-            print(f"Backup created: '{backup_path}'")
-            return True
-        except Exception as e:
-            print(f"{ERROR} An error occurred while creating the backup: {e}")
 
     # File deletion as argument.
     @staticmethod
@@ -506,7 +490,8 @@ class SystemConfiguration:
             logging.info(f"{SUCCESS} No misconfiguration found related to sshd_config.")
         else:
             logging.info(f"{ERROR} SSHD misconfiguration found.")
-            sleep(2)
+
+        return REPAIR_REQUIRED
 
             
     # Debug level verification on sshd_config and TraceLevel on PSMPTrace
@@ -852,16 +837,16 @@ class SystemConfiguration:
         logging.info(SystemConfiguration.check_system_resources())
 
         # Check SSHD configuration
-        SystemConfiguration.check_sshd_config(psmp_version,REPAIR_REQUIRED)
+        REPAIR_REQUIRED = SystemConfiguration.check_sshd_config(psmp_version,REPAIR_REQUIRED)
 
         #Check SELinux
         SystemConfiguration.print_latest_selinux_prevention_lines()
 
-        #Check for REPAIR_REQUIRED flag
+        #Certain point to Check for REPAIR_REQUIRED flag
         if REPAIR_REQUIRED:
             logging.info(f"\n{WARNING} RPM Repair required, for repair automation execute ' python3 PSMPAssistant.py repair '")
             sleep(2)
-            sys.exit(1)
+            return
 
         # Search for failed connection attempts in the secure log
         SystemConfiguration.search_logs_patterns(distro_name)
@@ -976,7 +961,7 @@ class RPMAutomation:
 
                 # Update CreateVaultEnvironment and EnableADBridge in one loop
                 psmpparms_content = [
-                    ("CreateVaultEnvironment=No\n" if input("Do you want to skip Vault environment creation? (y/n): ").strip().lower() in ['y', 'yes'] else "CreateVaultEnvironment=Yes\n") 
+                    ("CreateVaultEnvironment=No\n" if input("Do you want to create Vault environment? (y/n): ").strip().lower() in ['n', 'no'] else "CreateVaultEnvironment=Yes\n") 
                     if line.startswith("#CreateVaultEnvironment=") else line
                     for line in psmpparms_content
                 ]
@@ -1033,7 +1018,7 @@ class RPMAutomation:
             process = subprocess.Popen(["rpm", "-Uvh", "--force", rpm_file_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
             for line in process.stdout:
-                logging.info(line.strip())  # Display to the customer
+                logging.info(line.strip())  # Display the output live
                 if "completed with errors" in line:
                     logging.info(f"{ERROR} Main RPM {rpm_file_path} Installation completed with errors.")
                     break
@@ -1045,28 +1030,6 @@ class RPMAutomation:
 
 
 class SideFeatures:
-
-    # Restore the sshd_config file from a backup and rename the current one
-    def restore_sshd_config_from_backup():
-        # Path to the backup sshd_config file
-        backup_file_path = "/opt/CARKpsmp/backup/sshd_config_backup"
-        current_sshd_config_path = "/etc/ssh/sshd_config"
-        
-        try:
-            # Ask for confirmation from the user
-            confirmation = input("Do you want to restore sshd_config from backup? (y/n): ")
-            if confirmation.lower() != "y" and confirmation.lower() != "yes":
-                logging.info("Restoration aborted.")
-                return
-            if Utility.backup_file(current_sshd_config_path):
-                # Move the backup insted of the curent sshd
-                subprocess.run(["cp", "-i", backup_file_path, current_sshd_config_path])
-                logging.info(f"{SUCCESS} Successfully restored sshd_config from backup.")
-
-        except FileNotFoundError:
-            logging.error(f"{WARNING} Backup file not found.")
-        except Exception as e:
-            logging.error(f"Error: {e}")
 
     # Generate PSMP connection string based on user inputs
     def generate_psmp_connection_string():
@@ -1101,13 +1064,19 @@ class SideFeatures:
     
     # Log collection function
     def logs_collect(skip_debug):
-        logging.info("PSMP Logs Collection:")
-        Utility.delete_file(Utility.log_filename)
+        logging.info("PSMP Logs Collection:\n")
 
         if not skip_debug:
             SystemConfiguration.check_debug_level()
 
         sleep(2)
+
+        # Define time threshold (3 days ago)
+        three_days_ago = datetime.now() - timedelta(days=3)
+        
+        def is_recent_file(file_path):
+            """Returns True if the file was modified in the last 3 days."""
+            return os.path.isfile(file_path) and datetime.fromtimestamp(os.path.getmtime(file_path)) >= three_days_ago
 
         config = Utility.load_config("src/logs_config.json")
         log_folders = config["log_folders"]
@@ -1116,17 +1085,7 @@ class SideFeatures:
 
         script_directory = os.path.dirname(os.path.abspath(__file__))
         log_file_pattern = os.path.join(script_directory, "PSMPAssistant-*.log")
-        log_files_to_collect = glob.glob(log_file_pattern)
-
-        # Define time threshold (3 days ago)
-        three_days_ago = datetime.now() - timedelta(days=3)
-
-        def is_recent_file(file_path):
-            """Returns True if the file was modified in the last 3 days."""
-            return os.path.isfile(file_path) and datetime.fromtimestamp(os.path.getmtime(file_path)) >= three_days_ago
-
-        # Filter only PSMP logs for the last 3 days
-        log_files_to_collect = [f for f in log_files_to_collect if is_recent_file(f)]
+        log_files_to_collect = [f for f in glob.glob(log_file_pattern) if is_recent_file(f)]
 
         print("\nThe following log files will be collected:\n")
         for folder in log_folders:
@@ -1161,40 +1120,36 @@ class SideFeatures:
             for folder in log_folders:
                 if os.path.exists(folder):
                     category = get_log_category(folder)
-                    if category:
-                        dest_path = os.path.join(psmp_logs_directory, category, os.path.basename(folder))
-                        os.makedirs(dest_path, exist_ok=True)  # Ensure destination folder exists
-
-                        # Apply special handling for '/var/opt/CARKpsmp/logs'
-                        if folder.startswith("/var/opt/CARKpsmp/logs"):
-                            if os.path.isdir(folder):
-                                for root, dirs, files in os.walk(folder):
-                                    for file in files:
-                                        src_file = os.path.join(root, file)
-                                        dest_file = os.path.join(dest_path, os.path.relpath(src_file, folder))
-                                        if is_recent_file(src_file):
-                                            os.makedirs(os.path.dirname(dest_file), exist_ok=True)  # Ensure subdir exists
-                                            shutil.copy2(src_file, dest_file)
-                            else:
-                                # Collect any files directly in /var/opt/CARKpsmp/logs
-                                if is_recent_file(folder):
-                                    shutil.copy(folder, dest_path)
+                    dest_path = os.path.join(psmp_logs_directory, category) if category else psmp_logs_directory
+                    os.makedirs(dest_path, exist_ok=True)
+                    
+                    if folder.startswith("/var/opt/CARKpsmp/logs"):
+                        psmp_dest_path = os.path.join(psmp_logs_directory, "PSMP")
+                        os.makedirs(psmp_dest_path, exist_ok=True)
+                        
+                        for root, dirs, files in os.walk(folder):
+                            relative_root = os.path.relpath(root, folder)
+                            dest_subdir = os.path.join(psmp_dest_path, relative_root)
+                            os.makedirs(dest_subdir, exist_ok=True)
+                            
+                            for file in files:
+                                src_file = os.path.join(root, file)
+                                if is_recent_file(src_file):
+                                    shutil.copy2(src_file, os.path.join(dest_subdir, file))
+                    else:
+                        if os.path.isdir(folder):
+                            for root, _, files in os.walk(folder):
+                                for file in files:
+                                    src_file = os.path.join(root, file)
+                                    if is_recent_file(src_file):
+                                        shutil.copy2(src_file, os.path.join(dest_path, file))
                         else:
-                            # Collect files normally for other directories
-                            if os.path.isdir(folder):
-                                for root, dirs, files in os.walk(folder):
-                                    for file in files:
-                                        src_file = os.path.join(root, file)
-                                        dest_file = os.path.join(dest_path, file)
-                                        shutil.copy2(src_file, dest_file)
-                            else:
-                                shutil.copy(folder, dest_path)
+                            if is_recent_file(folder):
+                                shutil.copy2(folder, dest_path)
 
-            # Collect PSMP Assistant logs
             for log_file in log_files_to_collect:
                 shutil.copy(log_file, psmp_logs_directory)
 
-            # Command output collection
             command_output_dir = os.path.join(psmp_logs_directory, "command_output")
             os.makedirs(command_output_dir, exist_ok=True)
 
@@ -1208,22 +1163,23 @@ class SideFeatures:
                 except subprocess.CalledProcessError as e:
                     logging.error(f"Failed to execute command: {command} with error: {e}")
 
-            # Zip the collected logs
-            current_date = datetime.now().strftime("-%m-%d-%y_%H-%M")
-            zip_filename = f"PSMPAssistant_Logs_{current_date}.zip"
+            current_date = datetime.now().strftime("%m-%d-%y_%H-%M")
+            zip_filename = f"PSMPAssistant_Logs-{current_date}.zip"
             with zipfile.ZipFile(zip_filename, "w") as zipf:
                 for root, _, files in os.walk(psmp_logs_directory):
                     for file in files:
                         file_path = os.path.join(root, file)
                         zipf.write(file_path, os.path.relpath(file_path, psmp_logs_directory))
 
-            print(f"{SUCCESS} Logs copied and zip file created: {zip_filename}")
+            print(f"Logs copied and zip file created: {zip_filename}")
 
         except Exception as e:
             print(f"An error occurred: {e}")
 
         finally:
             shutil.rmtree(psmp_logs_directory, ignore_errors=True)
+
+
 
 
 
@@ -1238,21 +1194,16 @@ class CommandHandler:
             if arg == "logs":
                 SideFeatures.logs_collect(skip_debug)
                 sys.exit(1)
-            elif arg == "restore-sshd":
-                SideFeatures.restore_sshd_config_from_backup()
-                Utility.delete_file(Utility.log_filename)
-                sys.exit(1)
             elif arg == "string":
                 logging.info(SideFeatures.generate_psmp_connection_string())
                 Utility.delete_file(Utility.log_filename)
                 sys.exit(1)
             elif arg == "repair":
-                Utility.log_filename = datetime.now().strftime("PSMPAssistant-Repair-%m-%d-%y-%H:%M.log")
                 RPMAutomation.rpm_repair(psmp_version)
-                sys.exit(1)
-        else:
-            print(f"{ERROR} Invalid agrument.")
-            sys.exit(1)
+                return
+        
+        print(f"{ERROR} Invalid agrument.")
+       
 
 class PSMPAssistant:
     def __init__(self):
