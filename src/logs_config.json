@@ -28,7 +28,7 @@
         "getent group 50501",
         "getent group 50502",
         "sshd -T",
-        "rpm -qa | grep CARK",
+        "rpm -qa | grep -i CARK",
         "ssh -V"
     ],
     "log_categories": {
