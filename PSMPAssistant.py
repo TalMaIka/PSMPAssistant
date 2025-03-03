@@ -494,7 +494,7 @@ class SystemConfiguration:
 
         return REPAIR_REQUIRED
 
-            
+        
     # Debug level verification on sshd_config and TraceLevel on PSMPTrace
     def check_debug_level():
         psmp_confxml_path = "/var/opt/CARKpsmp/temp/PVConfiguration.xml"
@@ -502,7 +502,7 @@ class SystemConfiguration:
 
         # Run `sshd -T` to get the active SSHD configuration
         try:
-            result = subprocess.run(["sshd", "-T"], capture_output=True, text=True, check=True)
+            result = subprocess.run(["sshd", "-T"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True,check=True)
             sshd_config_output = dict(line.split(None, 1) for line in result.stdout.splitlines() if " " in line)
         except (FileNotFoundError, subprocess.CalledProcessError):
             logging.info(f"{ERROR} Failed to retrieve sshd configuration with 'sshd -T'. Ensure OpenSSH is installed and running.")
