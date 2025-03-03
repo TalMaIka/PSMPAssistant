@@ -19,7 +19,6 @@
     "commands": [
         "getent passwd PSMConnect",
         "getent passwd PSMShadowUser",
-        "getent passwd admin@root@localhost",
         "getent group PSMConnectUsers",
         "getent group PSMShadowUsers",
         "getent passwd 50500",
