@@ -886,7 +886,7 @@ class RPMAutomation:
     def verify_installation_files(install_folder):
         required_files = [
             f"{install_folder}/CreateCredFile",
-            f"{install_folder}/vault.ini",
+            "/etc/opt/CARKpsmp/vault/vault.ini",
             f"{install_folder}/psmpparms.sample"
         ]
         
@@ -939,9 +939,9 @@ class RPMAutomation:
                 return
 
             # Step 3: Fetch and verify vault.ini file
-            vault_address = SystemConfiguration.get_vault_address(f"{install_folder}/vault.ini")
+            vault_address = SystemConfiguration.get_vault_address("/etc/opt/CARKpsmp/vault/vault.ini")
 
-            SystemConfiguration.verify_vault_address(vault_address, f"{install_folder}/vault.ini")
+            SystemConfiguration.verify_vault_address(vault_address, "/etc/opt/CARKpsmp/vault/vault.ini")
 
             # Step 4: Modify psmpparms.sample file based on user input
             psmpparms_sample_path = os.path.join(install_folder, "psmpparms.sample")
@@ -1028,7 +1028,7 @@ class RPMAutomation:
 
             for line in process.stdout:
                 logging.info(line.strip())  # Display the output live
-                if "completed with errors" in line or "[ERROR] Repair installation encountered errors" in line:
+                if "completed with errors" in line or "[ERROR]" in line:
                     logging.info(f"{ERROR} Main RPM {rpm_file_path} Installation completed with errors.")
                     break
             else:
