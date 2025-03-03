@@ -497,55 +497,63 @@ class SystemConfiguration:
             
     # Debug level verification on sshd_config and TraceLevel on PSMPTrace
     def check_debug_level():
-        ssh_config_path = "/etc/ssh/sshd_config"
         psmp_confxml_path = "/var/opt/CARKpsmp/temp/PVConfiguration.xml"
-        changes_made = False
         desired_log_level = "DEBUG3"
 
-        # Read the sshd_config file
-        with open(ssh_config_path, 'r') as file:
-            lines = file.readlines()
+        # Run `sshd -T` to get the active SSHD configuration
+        try:
+            result = subprocess.run(["sshd", "-T"], capture_output=True, text=True, check=True)
+            sshd_config_output = dict(line.split(None, 1) for line in result.stdout.splitlines() if " " in line)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            print(f"{ERROR} Failed to retrieve sshd configuration with 'sshd -T'. Ensure OpenSSH is installed and running.")
+            sys.exit(1)
 
-        for _, line in enumerate(lines):
-            stripped_line = line.strip()
+        # Validate LogLevel
+        log_level = sshd_config_output.get("loglevel", "").upper()
+        if not log_level:
+            print(f"{ERROR} LogLevel not found in sshd configuration.")
+            sys.exit(1)
 
-            # Check if LogLevel is commented out and appears exactly once
-            if stripped_line.startswith("#") and stripped_line.count("LogLevel") == 1:
-                print(f"{WARNING} LogLevel should be uncommented; required DEBUG3.")
-                sleep(2)
-                sys.exit(1)
+        if log_level == desired_log_level:
+            print(f"{SUCCESS} Correct SSHD LogLevel ({log_level}) found.")
+        elif log_level == "INFO":
+            print(f"{WARNING} LogLevel found as INFO; required {desired_log_level}.")
+            sys.exit(1)
+        else:
+            print(f"{WARNING} LogLevel is set to {log_level}; recommended {desired_log_level}.")
 
-            # Check if LogLevel is uncommented and valid
-            if stripped_line.startswith("LogLevel "):
-                if stripped_line == f"LogLevel {desired_log_level}":
-                    print(f"{SUCCESS} Correct SSHD LogLevel found in sshd_config")
-                elif stripped_line == "LogLevel INFO":
-                        print(f"{WARNING} LogLevel found as INFO; required DEBUG3.")
-                        sys.exit(1)
-
-        # Check for the TraceLevels update message in PSMPTrace.log
-        trace_message = """<ServerSettings TraceLevels="1,2,3,4,5,6,7">"""
-        trace_found = False
-
+        # Read PVConfiguration.xml content efficiently
         try:
             with open(psmp_confxml_path, 'r') as file:
-                for line in file:
-                    if trace_message in line:
-                        trace_found = True
-                        print(f"{SUCCESS} Correct TraceLevels found in PVConfiguration.xml.")
-                        break
-            if not trace_found:
-                # Note for the user
-                print(f"{ERROR} TraceLevels missing in PVConfiguration.xml")
-                print("\nSetting correct TraceLevels in the PVWA:")
-                print("1. Go to Administration → Options → Privileged Session Management → General Settings.")
-                print("2. Under Server Settings set TraceLevels=1,2,3,4,5,6,7")
-                print("3. Under Connection Client Settings set TraceLevels=1,2")
-                print("* Make sure to Save and Restart psmpsrv service.")
+                xml_content = file.read()
         except FileNotFoundError:
             print(f"{ERROR} PVConfiguration.xml file not found at {psmp_confxml_path}.")
+            sys.exit(1)
 
-        return (not changes_made) and trace_found
+        # Use regex to find the required lines
+        server_trace_match = re.search(r'<ServerSettings\b[^>]*TraceLevels="1,2,3,4,5,6,7"\s*>', xml_content)
+        client_trace_match = re.search(r'<ConnectionClientSettings\b[^>]*TraceLevels="1,2"\s*>', xml_content)
+
+        # Print results
+        if server_trace_match:
+            print(f"{SUCCESS} Correct ServerSettings TraceLevels found in PVConfiguration.xml.")
+        else:
+            print(f"{ERROR} Missing or incorrect <ServerSettings ... TraceLevels=\"1,2,3,4,5,6,7\"> in PVConfiguration.xml.")
+
+        if client_trace_match:
+            print(f"{SUCCESS} Correct ConnectionClientSettings TraceLevels found in PVConfiguration.xml.")
+        else:
+            print(f"{ERROR} Missing or incorrect <ConnectionClientSettings ... TraceLevels=\"1,2\"> in PVConfiguration.xml.")
+
+        # Provide fix instructions if necessary
+        if not (server_trace_match and client_trace_match):
+            print("\nTo fix this, update the PVWA settings:")
+            print("1. Go to Administration → Options → Privileged Session Management → General Settings.")
+            print("2. Under Server Settings, set TraceLevels=1,2,3,4,5,6,7")
+            print("3. Under Connection Client Settings, set TraceLevels=1,2")
+            print("* Make sure to Save and Restart psmpsrv service.")
+
+        return server_trace_match and client_trace_match
     
     # Checking system resources
     def check_system_resources():
