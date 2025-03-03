@@ -66,7 +66,7 @@ class Utility:
                 file.writelines(cleaned_lines)
         
         except Exception as e:
-            print(f"No log file clean {e}")
+            return
 
     # File deletion as argument.
     @staticmethod
@@ -505,30 +505,30 @@ class SystemConfiguration:
             result = subprocess.run(["sshd", "-T"], capture_output=True, text=True, check=True)
             sshd_config_output = dict(line.split(None, 1) for line in result.stdout.splitlines() if " " in line)
         except (FileNotFoundError, subprocess.CalledProcessError):
-            print(f"{ERROR} Failed to retrieve sshd configuration with 'sshd -T'. Ensure OpenSSH is installed and running.")
-            sys.exit(1)
+            logging.info(f"{ERROR} Failed to retrieve sshd configuration with 'sshd -T'. Ensure OpenSSH is installed and running.")
+            return False
 
         # Validate LogLevel
         log_level = sshd_config_output.get("loglevel", "").upper()
         if not log_level:
-            print(f"{ERROR} LogLevel not found in sshd configuration.")
-            sys.exit(1)
+            logging.info(f"{ERROR} LogLevel not found in sshd configuration.")
+            return False
 
         if log_level == desired_log_level:
-            print(f"{SUCCESS} Correct SSHD LogLevel ({log_level}) found.")
+            logging.info(f"{SUCCESS} Correct SSHD LogLevel ({log_level}) found.")
         elif log_level == "INFO":
-            print(f"{WARNING} LogLevel found as INFO; required {desired_log_level}.")
-            sys.exit(1)
+            logging.info(f"{WARNING} LogLevel found as INFO; required {desired_log_level}.")
+            return False
         else:
-            print(f"{WARNING} LogLevel is set to {log_level}; recommended {desired_log_level}.")
+            logging.info(f"{WARNING} LogLevel is set to {log_level}; recommended {desired_log_level}.")
 
         # Read PVConfiguration.xml content efficiently
         try:
             with open(psmp_confxml_path, 'r') as file:
                 xml_content = file.read()
         except FileNotFoundError:
-            print(f"{ERROR} PVConfiguration.xml file not found at {psmp_confxml_path}.")
-            sys.exit(1)
+            logging.info(f"{ERROR} PVConfiguration.xml file not found at {psmp_confxml_path}.")
+            return False
 
         # Use regex to find the required lines
         server_trace_match = re.search(r'<ServerSettings\b[^>]*TraceLevels="1,2,3,4,5,6,7"\s*>', xml_content)
@@ -536,22 +536,22 @@ class SystemConfiguration:
 
         # Print results
         if server_trace_match:
-            print(f"{SUCCESS} Correct ServerSettings TraceLevels found in PVConfiguration.xml.")
+            logging.info(f"{SUCCESS} Correct ServerSettings TraceLevels found in PVConfiguration.xml.")
         else:
-            print(f"{ERROR} Missing or incorrect <ServerSettings ... TraceLevels=\"1,2,3,4,5,6,7\"> in PVConfiguration.xml.")
+            logging.info(f"{ERROR} Missing or incorrect <ServerSettings ... TraceLevels=\"1,2,3,4,5,6,7\"> in PVConfiguration.xml.")
 
         if client_trace_match:
-            print(f"{SUCCESS} Correct ConnectionClientSettings TraceLevels found in PVConfiguration.xml.")
+            logging.info(f"{SUCCESS} Correct ConnectionClientSettings TraceLevels found in PVConfiguration.xml.")
         else:
-            print(f"{ERROR} Missing or incorrect <ConnectionClientSettings ... TraceLevels=\"1,2\"> in PVConfiguration.xml.")
+            logging.info(f"{ERROR} Missing or incorrect <ConnectionClientSettings ... TraceLevels=\"1,2\"> in PVConfiguration.xml.")
 
         # Provide fix instructions if necessary
         if not (server_trace_match and client_trace_match):
-            print("\nTo fix this, update the PVWA settings:")
-            print("1. Go to Administration → Options → Privileged Session Management → General Settings.")
-            print("2. Under Server Settings, set TraceLevels=1,2,3,4,5,6,7")
-            print("3. Under Connection Client Settings, set TraceLevels=1,2")
-            print("* Make sure to Save and Restart psmpsrv service.")
+            logging.info("\nTo fix this, update the PVWA settings:")
+            logging.info("1. Go to Administration → Options → Privileged Session Management → General Settings.")
+            logging.info("2. Under Server Settings, set TraceLevels=1,2,3,4,5,6,7")
+            logging.info("3. Under Connection Client Settings, set TraceLevels=1,2")
+            logging.info("* Make sure to Save and Restart psmpsrv service.")
 
         return server_trace_match and client_trace_match
     
@@ -1076,8 +1076,8 @@ class SideFeatures:
         logging.info("PSMP Logs Collection:\n")
 
         if not skip_debug:
-            SystemConfiguration.check_debug_level()
-
+           if not SystemConfiguration.check_debug_level():
+               return
         sleep(2)
 
         # Define time threshold (3 days ago)
@@ -1096,21 +1096,21 @@ class SideFeatures:
         log_file_pattern = os.path.join(script_directory, "PSMPAssistant-*.log")
         log_files_to_collect = [f for f in glob.glob(log_file_pattern) if is_recent_file(f)]
 
-        print("\nThe following log files will be collected:\n")
+        logging.info("\nThe following log files will be collected:\n")
         for folder in log_folders:
-            print(folder)
+            logging.info(folder)
         for log_file in log_files_to_collect:
-            print(log_file)
+            logging.info(log_file)
 
-        print("\nAs well as the outputs from these commands:")
+        logging.info("\nAs well as the outputs from these commands:")
         for command in commands:
-            print(command)
+            logging.info(command)
 
-        print("\nDocs Link: https://docs.cyberark.com/pam-self-hosted/latest/en/Content/PAS%20INST/The-PSMP-Environment.htm")
-        print("Do you wish to continue? (y/n): ")
+        logging.info("\nDocs Link: https://docs.cyberark.com/pam-self-hosted/latest/en/Content/PAS%20INST/The-PSMP-Environment.htm")
+        logging.info("Do you wish to continue? (y/n): ")
         choice = input().lower()
         if choice not in ['y', 'yes']:
-            print("Logs collection aborted.")
+            logging.info("Logs collection aborted.")
             return
 
         psmp_logs_directory = os.path.join(script_directory, "PSMPAssistant-Logs")
@@ -1180,16 +1180,13 @@ class SideFeatures:
                         file_path = os.path.join(root, file)
                         zipf.write(file_path, os.path.relpath(file_path, psmp_logs_directory))
 
-            print(f"Logs copied and zip file created: {zip_filename}")
+            logging.info(f"Logs copied and zip file created: {zip_filename}")
 
         except Exception as e:
-            print(f"An error occurred: {e}")
+            logging.info(f"An error occurred: {e}")
 
         finally:
             shutil.rmtree(psmp_logs_directory, ignore_errors=True)
-
-
-
 
 
 class CommandHandler:
@@ -1202,11 +1199,11 @@ class CommandHandler:
                 skip_debug = True
             if arg == "logs":
                 SideFeatures.logs_collect(skip_debug)
-                sys.exit(1)
+                return
             elif arg == "string":
                 logging.info(SideFeatures.generate_psmp_connection_string())
                 Utility.delete_file(Utility.log_filename)
-                sys.exit(1)
+                return
             elif arg == "repair":
                 RPMAutomation.rpm_repair(psmp_version)
                 return
