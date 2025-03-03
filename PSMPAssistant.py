@@ -97,7 +97,7 @@ class Utility:
     | |_) \___ \| |\/| | |_) / _ \ / __/ __| / __| __/ _` | '_ \| __|
     |  __/ ___) | |  | |  __/ ___ \\__ \__ \ \__ \ || (_| | | | | |_ 
     |_|   |____/|_|  |_|_| /_/   \_\___/___/_|___/\__\__,_|_| |_|\__|
-        © 2024 CyberArk Community, Developed By Tal.M"""
+        © 2025 CyberArk Community, Developed By Tal.M"""
         logging.info(f"{logo}\n\n")
 
     # Collect PSMP machine logs and creating a zip file
@@ -481,10 +481,11 @@ class SystemConfiguration:
             logging.info(f"{WARNING} AllowUser mentioned in sshd_config and should not be present.")
 
         if not pubkey_auth:
-            logging.info(f"{WARNING} PubkeyAuthentication is not enabled.")
-        
+            logging.info(f"{WARNING} PubkeyAuthentication is not enabled, which could interfere with MFA caching.")
+
         if not found_pubkey_accepted_algorithms:
-            logging.info(f"{WARNING} MFA Caching using RSA disabled, required 'PubkeyAcceptedAlgorithms +ssh-rsa' in sshd_config.")
+            logging.info(f"{WARNING} RSA Keys requires 'PubkeyAcceptedAlgorithms +ssh-rsa' in sshd_config.")
+
 
         if not REPAIR_REQUIRED: 
             logging.info(f"{SUCCESS} No misconfiguration found related to sshd_config.")
@@ -1019,7 +1020,7 @@ class RPMAutomation:
 
             for line in process.stdout:
                 logging.info(line.strip())  # Display the output live
-                if "completed with errors" in line:
+                if "completed with errors" in line or "[ERROR] Repair installation encountered errors" in line:
                     logging.info(f"{ERROR} Main RPM {rpm_file_path} Installation completed with errors.")
                     break
             else:
