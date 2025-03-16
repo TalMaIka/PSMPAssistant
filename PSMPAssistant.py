@@ -1079,7 +1079,8 @@ class SideFeatures:
             if not SystemConfiguration.check_debug_level():
                 return
         sleep(2)
-
+        # Clean the current assistant log file.
+        Utility.clean_log_file(Utility.log_filename)
         # Define time threshold (3 days ago)
         three_days_ago = datetime.now() - timedelta(days=3)
 
@@ -1173,7 +1174,7 @@ class SideFeatures:
                         f.write(command_output)
                 except subprocess.CalledProcessError as e:
                     logging.error(f"Failed to execute command: {command} with error: {e}")
-
+            
             current_date = datetime.now().strftime("%m-%d-%y_%H-%M")
             zip_filename = f"PSMPAssistant_Logs-{current_date}.zip"
             with zipfile.ZipFile(zip_filename, "w") as zipf:
