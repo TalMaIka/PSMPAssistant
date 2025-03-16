@@ -4,7 +4,7 @@
 
 A Python-based tool designed to verify the installation and compatibility of Privileged Session Manager Proxy (PSMP) on Linux systems. This tool evaluates PSMP and SSHD service statuses, supported Linux distributions, configuration compliance, and generates necessary system logs for diagnostic purposes.
 
-## Installation
+## Cloning
 
 ```bash
 git clone https://github.com/TalMaIka/PSMPAssistant.git
