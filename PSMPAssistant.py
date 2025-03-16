@@ -1076,16 +1076,18 @@ class SideFeatures:
         logging.info("PSMP Logs Collection:\n")
 
         if not skip_debug:
-           if not SystemConfiguration.check_debug_level():
-               return
+            if not SystemConfiguration.check_debug_level():
+                return
         sleep(2)
 
         # Define time threshold (3 days ago)
         three_days_ago = datetime.now() - timedelta(days=3)
-        
+
         def is_recent_file(file_path):
             """Returns True if the file was modified in the last 3 days."""
-            return os.path.isfile(file_path) and datetime.fromtimestamp(os.path.getmtime(file_path)) >= three_days_ago
+            return os.path.isfile(file_path) and (
+                datetime.fromtimestamp(os.path.getmtime(file_path)) >= three_days_ago
+            )
 
         config = Utility.load_config("src/logs_config.json")
         log_folders = config["log_folders"]
@@ -1131,30 +1133,30 @@ class SideFeatures:
                     category = get_log_category(folder)
                     dest_path = os.path.join(psmp_logs_directory, category) if category else psmp_logs_directory
                     os.makedirs(dest_path, exist_ok=True)
-                    
+
                     if folder.startswith("/var/opt/CARKpsmp/logs"):
+                        # Apply is_recent_file() only in this folder
                         psmp_dest_path = os.path.join(psmp_logs_directory, "PSMP")
                         os.makedirs(psmp_dest_path, exist_ok=True)
-                        
-                        for root, dirs, files in os.walk(folder):
+
+                        for root, _, files in os.walk(folder):
                             relative_root = os.path.relpath(root, folder)
                             dest_subdir = os.path.join(psmp_dest_path, relative_root)
                             os.makedirs(dest_subdir, exist_ok=True)
-                            
+
                             for file in files:
                                 src_file = os.path.join(root, file)
-                                if is_recent_file(src_file):
+                                if is_recent_file(src_file):  # Filter by recent files
                                     shutil.copy2(src_file, os.path.join(dest_subdir, file))
                     else:
+                        # Collect ALL other files without checking modification time
                         if os.path.isdir(folder):
                             for root, _, files in os.walk(folder):
                                 for file in files:
                                     src_file = os.path.join(root, file)
-                                    if is_recent_file(src_file):
-                                        shutil.copy2(src_file, os.path.join(dest_path, file))
+                                    shutil.copy2(src_file, os.path.join(dest_path, file))
                         else:
-                            if is_recent_file(folder):
-                                shutil.copy2(folder, dest_path)
+                            shutil.copy2(folder, dest_path)
 
             for log_file in log_files_to_collect:
                 shutil.copy(log_file, psmp_logs_directory)
