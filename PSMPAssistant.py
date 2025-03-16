@@ -443,7 +443,7 @@ class SystemConfiguration:
                         found_psmp_auth_block = True
 
                     # Check for AllowUser line
-                    if allow_user_pattern.match(line):
+                    if allow_user_pattern.match(line) and not line.lstrip().startswith("#"):
                         found_allow_user = True
 
                     # Check for PubkeyAcceptedAlgorithms and ensure it is uncommented
