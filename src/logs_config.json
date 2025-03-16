@@ -12,9 +12,11 @@
         "/var/tmp/psmp_install.log",
         "/var/opt/CARKpsmp/temp/EnvManager.log",
         "/etc/opt/CARKpsmp/conf/basic_psmpserver.conf",
-        "/etc/opt/CARKpsmpadb/conf/basic_psmpadbridge.conf",
         "/var/opt/CARKpsmp/temp/PVConfiguration.xml",
-        "/var/opt/CARKpsmp/temp/Policies.xml"
+        "/var/opt/CARKpsmp/temp/Policies.xml",
+        "/etc/os-release",
+        "/etc/opt/CARKpsmp/components/components.conf",
+        "/etc/opt/CARKpsmpadb/conf/basic_psmpadbridge.conf"
     ],
     "commands": [
         "getent passwd PSMConnect",
@@ -35,14 +37,16 @@
         "systemctl show | cat",
         "sshd -T",
         "rpm -qa | grep -i CARK",
-        "ssh -V"
+        "ssh -V",
+        "uname -a"
     ],
     "log_categories": {
-        "OS": ["/var/log/secure", "/var/log/messages", "sshd_config", "ssh_config", "nsswitch.conf"],
-        "PAM.d": ["sshd", "password-auth", "system-auth"],
+        "OS": ["secure", "messages", "sshd_config", "ssh_config", "nsswitch.conf","os-release"],
+        "OS/PAM.d": ["sshd", "password-auth", "system-auth"],
         "PSMP": ["/var/opt/CARKpsmp/logs"],
         "PSMP/Installation": ["psmp_install.log", "EnvManager.log"],
-        "PSMP/Conf": ["basic_psmpserver.conf", "basic_psmpadbridge.conf"],
+        "PSMP/Conf": ["basic_psmpserver.conf", "basic_psmpadbridge.conf","components.conf"],
         "PSMP/Temp": ["PVConfiguration.xml", "Policies.xml"]
+        
     }
 }
