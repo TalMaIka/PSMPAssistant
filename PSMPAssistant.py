@@ -735,7 +735,7 @@ class SystemConfiguration:
                     subprocess.run(["systemctl", "disable", "nscd"], check=True)
                     logging.info("{WARNING} NSCD Stopped and Disabled.")
             else:
-                logging.info(f"{SUCCESS} NSCD service is not running as expected.")
+                logging.info(f"NSCD Service Status: {SUCCESS} Not running, as expected.")
         except subprocess.CalledProcessError as e:
             logging.info(f"Error: {e}")
 
