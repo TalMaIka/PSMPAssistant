@@ -1153,7 +1153,8 @@ class SideFeatures:
                             for root, _, files in os.walk(folder):
                                 for file in files:
                                     src_file = os.path.join(root, file)
-                                    shutil.copy2(src_file, os.path.join(dest_path, file))
+                                    if not src_file.endswith(".bak"):  # Exclude .bak files
+                                        shutil.copy2(src_file, os.path.join(dest_path, file))
                         else:
                             shutil.copy2(folder, dest_path)
 
