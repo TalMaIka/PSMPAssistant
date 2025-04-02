@@ -484,8 +484,7 @@ class SystemConfiguration:
             logging.info(f"{WARNING} PubkeyAuthentication is not enabled, which could interfere with MFA caching.")
 
         if not found_pubkey_accepted_algorithms:
-            logging.info(f"{WARNING} RSA Keys requires 'PubkeyAcceptedAlgorithms +ssh-rsa' in sshd_config.")
-
+            logging.info(f"{WARNING} RSA is the default MFA-Caching Key encryption type but deprecated by OpenSSH. \nTo use it, add 'PubkeyAcceptedAlgorithms +ssh-rsa' to sshd_config.")
 
         if not REPAIR_REQUIRED: 
             logging.info(f"{SUCCESS} No misconfiguration found related to sshd_config.")
@@ -660,65 +659,60 @@ class SystemConfiguration:
             logging.info(f"\n{WARNING} Hostname: '{hostname}' as default value, Change it to unique hostname to eliminate future issues.")
         return hostname
 
-    #SELinux check
-    def print_latest_selinux_prevention_lines():
-        log_file_path = '/var/log/messages'
-        search_string = "SELinux is preventing"
+    #Checks SELinux current status
+    def check_selinux():
         logging.info("\nChecking SELinux...")
         sleep(2)
+        
         try:
-            # Run the 'sestatus' command to check SELinux status
-            result = subprocess.run(['sestatus'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True) 
-            logging.info(result.stdout.strip())
+            # Check the current SELinux mode
+            mode_result = subprocess.run(["getenforce"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            selinux_mode = mode_result.stdout.strip()
+            logging.info(f"Current SELinux mode: {selinux_mode.lower()}")
+
+            # Search for SELinux denials related to PSMP
+            result = subprocess.run(
+                ["ausearch", "-m", "AVC,USER_AVC", "-ts", "recent", "-f", "CARK"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
+            )
             
-        except subprocess.CalledProcessError:
-            logging.info(f"{WARNING} SELinux is not installed or not available on this system.")
-        except FileNotFoundError:
-            logging.info(f"{WARNING} The 'sestatus' command is not found. SELinux may not be installed.")
-        if "disabled" not in result.stdout.strip():
-            try:
-                # Use a deque to keep the latest 10 matching lines
-                latest_lines = deque(maxlen=2)
-                with open(log_file_path, 'r') as log_file:
-                    for line in log_file:
-                        # Check if the line contains the search string
-                        if search_string in line:
-                            # Add the line to the deque
-                            latest_lines.append(line.strip())
-                
-                if len(latest_lines) > 0:
-                    logging.info("\n=== Messages Logs ===")
-                    # Print each line in the deque on a new line
-                    for line in latest_lines:
-                        # If the line is longer than 200 characters, truncate it to 200 characters
-                        if len(line) > 200:
-                            logging.info(line[:130] + "...")
+            if result.stdout.strip():  # If denials exist
+                # Filter lines to include only those containing "CARKpsmp"
+                filtered_lines = [
+                    line for line in result.stdout.splitlines() if "CARKpsmp" in line
+                ]
+
+                if filtered_lines:  # If there are relevant denials
+                    for line in filtered_lines:
+                        logging.info(line)
+                    
+                    if selinux_mode.lower() == "enforcing":
+                        user_input = input("Do you want to temporarily disable SELinux? (y/n): ")
+                        if user_input.lower() in ["yes", "y"]:
+                            subprocess.run(["setenforce", "0"])
+                            logging.info(f"{WARNING} SELinux enforcement disabled temporarily. (setenforce 0)")
+                            return True
                         else:
-                            logging.info(line)
+                            logging.info(f"{WARNING} SELinux remains enforced.")
                 else:
-                    logging.info(f"{SUCCESS} SElinux is not preventing PSMP components.")
-                
-                # Check if SELinux is enforcing
-                if "SELinux status:                 enabled" in result.stdout and "Current mode:                   enforcing" in result.stdout:
-                    logging.info(f"{WARNING} SELinux is in enforcing mode.\n")
+                    logging.info(f"{SUCCESS} No relevant SELinux denials found for 'CARKpsmp'.")
 
-                    # Prompt the user for agreement to temporarily disable SELinux
-                    user_input = input("SELinux is enforcing. Temporarily disable until reboot? (y/n):").strip().lower()
-                    if user_input.lower() == 'y' or user_input.lower() == "yes":
-                        try:
-                            # Disable SELinux temporarily by setting it to permissive
-                            logging.info("Disabling SELinux temporarily (setenforce 0)...")
-                            subprocess.run(['setenforce', '0'], check=True)
-                            logging.info(f"{WARNING} SELinux has been temporarily disabled.")
-                        except subprocess.CalledProcessError as e:
-                            logging.error(f"{WARNING} Failed to disable SELinux: {e}")
-                    else:
-                        logging.info(f"{WARNING} SELinux will remain in enforcing mode.")
+            else:
+                logging.info(f"{SUCCESS} No SELinux denials found for PSMP component.")
 
-            except FileNotFoundError:
-                logging.info(f"{ERROR} The file '{log_file_path}' does not exist.")
-            except PermissionError:
-                logging.info(f"{ERROR} You do not have permission to access '{log_file_path}'.")
+        except Exception as e:
+            logging.error(f"Error while checking SELinux denials: {e}")
+
+    # Restoring SELinux status, if changed.
+    def restore_selinux_status():
+        user_input = input("\nDo you want to restore SELinux status to enforcing? (y/n): ")
+        
+        if user_input.lower() in ["yes", "y"]:
+            subprocess.run(["setenforce", "1"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            logging.info(f"{WARNING} SELinux enforcement restored. (setenforce 1)")
+            return True
+        else:
+            logging.info(f"{WARNING} SELinux remains permissive.")
 
 
     # Disable nscd service (if running, stop and disble)
@@ -849,7 +843,7 @@ class SystemConfiguration:
         REPAIR_REQUIRED = SystemConfiguration.check_sshd_config(psmp_version,REPAIR_REQUIRED)
 
         #Check SELinux
-        SystemConfiguration.print_latest_selinux_prevention_lines()
+        temp_disable = SystemConfiguration.check_selinux()
 
         #Certain point to Check for REPAIR_REQUIRED flag
         if REPAIR_REQUIRED:
@@ -878,6 +872,10 @@ class SystemConfiguration:
         if service_status.get('psmpsrv', 'Unavailable') != f"{SUCCESS} Running and communicating with Vault":
             if not nsswitch_changes:
                 logging.info(f"\n{WARNING} Recommended to proceed with a RPM installation repair, for repair automation execute ' python3 PSMPAssistant.py repair '")
+
+        # Restoring SELinux status, if changed.
+        if temp_disable:
+            SystemConfiguration.restore_selinux_status()
 
 
 class RPMAutomation:
