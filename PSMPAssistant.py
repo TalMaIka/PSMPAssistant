@@ -29,6 +29,7 @@ def handle_signal(signal, frame):
 # Set up the signal handler for SIGINT (Ctrl+C)
 signal.signal(signal.SIGINT, handle_signal)
 
+# Logging colors 
 WARNING='\033[38;5;214m[!]\033[0m'
 ERROR='\033[0;31m[-]\033[0m'
 SUCCESS='\033[0;32m[+]\033[0m'
@@ -897,6 +898,62 @@ class RPMAutomation:
         logging.info(f"{SUCCESS} All required installation files are present.")
         return True
         
+    # Imports the revelant RPM key
+    def import_gpg_key(installation_folder):
+        try:
+            key_path = f"{installation_folder}/RPM-GPG-KEY-CyberArk"
+            subprocess.run(
+                ["rpm", "--import", key_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                check=True
+            )
+            logging.info(f"{SUCCESS} GPG key imported from: {key_path}")
+            return True
+        except subprocess.CalledProcessError as e:
+            logging.error(f"{ERROR} Failed to import GPG key:\n{e.output}")
+            return False
+
+    # Check if the given RPM file is signed and all integrity checks pass.
+    def is_rpm_signed(rpm_path):
+        try:
+            result = subprocess.run(
+                ["rpm", "-K", "-v", rpm_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,  # compatible with Python 3.6+
+                check=True
+            )
+
+            output = result.stdout.strip()
+            signature_keywords = [
+                "RSA/SHA256 Signature",
+                "Header SHA256 digest",
+                "Payload SHA256 digest",
+                "MD5 digest"
+            ]
+
+            has_valid_signature = False
+
+            for line in output.splitlines():
+                if any(keyword in line for keyword in signature_keywords):
+                    if "OK" not in line:
+                        logging.error(f"{ERROR} RPM verification failed:\n{line}")
+                        return False
+                    if "Signature" in line:
+                        has_valid_signature = True
+
+            if not has_valid_signature:
+                logging.error(f"{ERROR} Main RPM {rpm_path} is not signed. Exiting.")
+                return False
+
+            logging.info(f"{SUCCESS} RPM verification passed for: {rpm_path}")
+            return True
+
+        except subprocess.CalledProcessError as e:
+            logging.error(f"{ERROR} Error executing rpm -K -v:\n{e.output}")
+            return False
 
     # Automates RPM repair for the specified PSMP version.
     def rpm_repair(psmp_version):
@@ -1006,6 +1063,10 @@ class RPMAutomation:
 
             # Step 6: Repair RPM
             rpm_file_path = os.path.join(install_folder, matching_rpms[0])
+            
+            # Importing the GPG Key
+            if not RPMAutomation.import_gpg_key(install_folder):
+                return
 
             # Handle IntegratedMode RPM repair in one block
             if SystemConfiguration.is_integrated(psmp_version) and float(psmp_version) <= 13.2:
@@ -1015,13 +1076,20 @@ class RPMAutomation:
                     for rpm in os.listdir(integrated_rpm_dir) if rpm.endswith(".rpm")
                 ]
 
-                if integrated_rpm_files:
+                if integrated_rpm_files and RPMAutomation.is_rpm_signed(integrated_rpm_files[0]):
                     integrated_rpm_path = integrated_rpm_files[0]
                     logging.info(f"\nRepairing IntegratedMode RPM from: {integrated_rpm_path}")
                     subprocess.run(["rpm", "-Uvh", "--force", integrated_rpm_path], )
+                else:
+                    logging.info(f"{ERROR} IntegratedMode RPM not found or not signed.")
+                    return
 
             # Main RPM repair
             logging.info(f"\nRepairing main RPM from: {rpm_file_path}")
+            if not RPMAutomation.is_rpm_signed(rpm_file_path):
+                logging.info(f"{ERROR} Main RPM {rpm_file_path} is not signed. Exiting.")
+                return
+            # Execute the RPM installation command
             process = subprocess.Popen(["rpm", "-Uvh", "--force", rpm_file_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
             for line in process.stdout:
