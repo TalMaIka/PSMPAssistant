@@ -922,7 +922,7 @@ class RPMAutomation:
                 ["rpm", "-K", "-v", rpm_path],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                universal_newlines=True,  # compatible with Python 3.6+
+                universal_newlines=True,
                 check=True
             )
 
