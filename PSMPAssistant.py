@@ -388,6 +388,16 @@ class SystemConfiguration:
                     logging.info(f"{WARNING} Unable to restart service: {e}")
                 except subprocess.TimeoutExpired as e:
                     logging.error(f"{WARNING} Timeout reached.")
+                    # Read the last line in the PSMPConsole.log
+                    try:
+                        with open('/var/opt/CARKpsmp/logs/PSMPConsole.log', 'r') as log_file:
+                            lines = log_file.readlines()
+                            if lines:
+                                logging.error(f"{WARNING} {lines[-1].strip()}")
+                            else:
+                                logging.error(f"{WARNING} Log file is empty.")
+                    except Exception as log_err:
+                        logging.error(f"{WARNING} Failed to read log file: {log_err}")
             except subprocess.CalledProcessError as e:
                 logging.info(f"{ERROR} No communication with the vault.")
                 sys.exit(1)
@@ -746,43 +756,36 @@ class SystemConfiguration:
         except subprocess.CalledProcessError as e:
             logging.info(f"Error: {e}")
 
-    # Veify nsswitch configuration
-    def verify_nsswitch_conf(psmp_version,REPAIR_REQUIRED):
-
+    # Verify nsswitch configuration
+    def verify_nsswitch_conf(psmp_version):
         nsswitch_path = "/etc/nsswitch.conf"
         logging.info("\nConfiguration Check for nsswitch.conf:")
         sleep(2)
+        
         try:
             psmp_version = float(psmp_version)
         except ValueError:
             logging.info("Invalid PSMP version.")
             return False
-        
-        # Define expected configurations based on PSMP version
+
+        # Define expected configurations as lists of required keywords
         expected_config_v12_2_or_newer = {
-            "passwd": "files psmp sss",
-            "shadow": "files sss",
-            "group": "files psmp sss",
-            "initgroups": "files psmp"
+            "passwd": ["files", "psmp", "sss"],
+            "group": ["files", "psmp", "sss"],
         }
 
         expected_config_older_than_v12_2 = {
-            "passwd": "files psmp sss",
-            "shadow": "files sss",
-            "group": "files psmp sss",
-            "initgroups": "files sss" 
+            "passwd": ["files", "psmp", "sss"],
+            "shadow": ["files", "sss"],
+            "group": ["files", "psmp", "sss"],
         }
-        
-        # Choose expected config based on version
-        if SystemConfiguration.is_integrated(psmp_version) or psmp_version > 13.0:
-                logging.info(f"{SUCCESS} nsswitch.conf is correctly configured.")
-                return False
-        if psmp_version >= 12.2:
-            expected_config = expected_config_v12_2_or_newer
-        else:
-            expected_config = expected_config_older_than_v12_2
 
-        # Read the file content
+        if not SystemConfiguration.is_integrated(psmp_version):
+            logging.info(f"{SUCCESS} nsswitch.conf is correctly configured.")
+            return False
+
+        expected_config = expected_config_v12_2_or_newer if psmp_version >= 12.2 else expected_config_older_than_v12_2
+
         try:
             with open(nsswitch_path, "r") as f:
                 content = f.readlines()
@@ -794,23 +797,21 @@ class SystemConfiguration:
         actual_config = {}
         for line in content:
             line = line.strip()
-            if line and not line.startswith("#"):  # Ignore empty lines and comments
+            if line and not line.startswith("#"):
                 key, *value = line.split(":")
                 actual_config[key.strip()] = value[0].strip() if value else ""
 
-        # Compare actual config with expected config
+        # Compare actual config to ensure all expected values are present
         misconfigurations = []
-        for key, expected_value in expected_config.items():
-            actual_value = actual_config.get(key)
-            if actual_value != expected_value:
-                misconfigurations.append((key, actual_value, expected_value))
+        for key, expected_values in expected_config.items():
+            actual_value = actual_config.get(key, "")
+            if not all(expected in actual_value.split() for expected in expected_values):
+                misconfigurations.append((key, actual_value, " ".join(expected_values)))
 
-        # If discrepancies are found, prompt for confirmation
         if misconfigurations:
             logging.info(f"{ERROR} Misconfigurations found in /etc/nsswitch.conf:")
-            REPAIR_REQUIRED = True
             for key, actual, expected in misconfigurations:
-                logging.info(f" - {key}: found '{actual}', expected '{expected}'")
+                logging.info(f" - {key}: found '{actual}', expected to contain '{expected}'")
             return True
         else:
             logging.info(f"{SUCCESS} The nsswitch.conf is correctly configured.")
@@ -847,7 +848,7 @@ class SystemConfiguration:
 
         # Check nsswitch configuration
         if SystemConfiguration.is_integrated(psmp_version):
-            nsswitch_changes=SystemConfiguration.verify_nsswitch_conf(psmp_version,REPAIR_REQUIRED)
+            nsswitch_changes=SystemConfiguration.verify_nsswitch_conf(psmp_version)
 
         # Check system resources load.
         logging.info(SystemConfiguration.check_system_resources())
@@ -859,7 +860,7 @@ class SystemConfiguration:
         temp_disable = SystemConfiguration.check_selinux()
 
         #Certain point to Check for REPAIR_REQUIRED flag
-        if REPAIR_REQUIRED:
+        if REPAIR_REQUIRED or nsswitch_changes:
             logging.info(f"\n{WARNING} RPM Repair required, for repair automation execute ' python3 PSMPAssistant.py repair '")
             sleep(2)
             return
