@@ -198,38 +198,50 @@ class SystemConfiguration:
 
     # Get the Linux distribution and version
     def get_linux_distribution():
-        
-        release_files = {
-            "/etc/centos-release": "CentOS Linux",
-            "/etc/redhat-release": "Red Hat Enterprise Linux"
-        }
+        distro_name = "Unknown"
+        version = "Unknown"
 
-        # Check CentOS/Red Hat release files
-        for file_path, distro_name in release_files.items():
-            try:
-                with open(file_path, "r") as f:
-                    content = f.read().replace("Core", "").strip()
-                    version = content.split("release")[1].split()[0]  # Extract major.minor version
-                    return distro_name, version
-            except FileNotFoundError:
-                continue
-
-        # Fallback: Parse /etc/os-release
+        # First, check /etc/os-release to identify the distro
         try:
             with open("/etc/os-release", "r") as f:
-                distro_info = dict(line.strip().split("=", 1) for line in f if "=" in line)
-                return distro_info.get("NAME", "Unknown"), distro_info.get("VERSION_ID", "Unknown")
+                distro_info = dict(
+                    line.strip().split("=", 1) for line in f if "=" in line
+                )
+                os_name = distro_info.get("NAME", "").strip('"')
+                os_version = distro_info.get("VERSION_ID", "").strip('"')
+
+                if "CentOS" in os_name:
+                    distro_name = "CentOS Linux"
+                    file_path = "/etc/centos-release"
+                elif "Red Hat" in os_name:
+                    distro_name = "Red Hat Enterprise Linux"
+                    file_path = "/etc/redhat-release"
+                elif "Rocky" in os_name:
+                    return os_name, os_version  # Just return directly for Rocky
+                else:
+                    return os_name, os_version  # Fallback for others
+
+                # If CentOS or RHEL, parse release file for full version
+                with open(file_path, "r") as f:
+                    content = f.read()
+                    match = re.search(r"release\s+([\d\.]+)", content)
+                    if match:
+                        version = match.group(1)
+
+                return distro_name, version
         except FileNotFoundError:
             pass
 
-        # Last resort: Use uname
+        # Last resort: uname
         try:
-            uname_version = subprocess.run(["uname", "-r"], capture_output=True, text=True, check=True).stdout.strip()
+            uname_version = subprocess.run(
+                ["uname", "-r"], capture_output=True, text=True, check=True
+            ).stdout.strip()
             return "Linux Kernel", uname_version
         except subprocess.CalledProcessError:
             pass
 
-        return "Unknown Linux Distribution", "Unknown"
+        return distro_name, version
 
 
     # Check if the PSMP version is supported for the given Linux distribution and version
