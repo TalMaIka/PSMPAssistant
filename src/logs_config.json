@@ -39,7 +39,8 @@
         "sshd -T",
         "rpm -qa | grep -i CARK",
         "ssh -V",
-        "uname -a"
+        "uname -a",
+        "journalctl -xe"
     ],
     "log_categories": {
         "OS": ["secure", "messages", "nsswitch.conf","os-release"],
