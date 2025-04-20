@@ -14,7 +14,7 @@
             "versions": ["7.9"]
         },
         {
-            "name": "SUSE Linux Enterprise Server",
+            "name": "SLES",
             "versions": ["12.4", "12.5"]
         }
     ]
@@ -34,7 +34,7 @@
               "versions": ["7.9"]
           },
           {
-              "name": "SUSE Linux Enterprise Server",
+              "name": "SLES",
               "versions": ["12.4", "12.5"]
           }
       ]
@@ -54,7 +54,7 @@
             "versions": ["7.9"]
         },
         {
-            "name": "SUSE Linux Enterprise Server",
+            "name": "SLES",
             "versions": ["12.4", "12.5"]
         }
     ]
@@ -74,7 +74,7 @@
               "versions": ["7.9"]
           },
           {
-              "name": "SUSE Linux Enterprise Server",
+              "name": "SLES",
               "versions": ["12.4", "12.5"]
           }
       ]
@@ -94,7 +94,7 @@
               "versions": ["7.9"]
           },
           {
-              "name": "SUSE Linux Enterprise Server",
+              "name": "SLES",
               "versions": ["12.4", "12.5", "15.5"]
           }
       ]
@@ -114,7 +114,7 @@
             "versions": ["7.9"]
         },
         {
-            "name": "SUSE Linux Enterprise Server",
+            "name": "SLES",
             "versions": ["12.4", "12.5", "15.5"]
         }
     ]
@@ -130,7 +130,7 @@
             "versions": ["8"]
         },
         {
-            "name": "SUSE Linux Enterprise Server",
+            "name": "SLES",
             "versions": ["12", "15"]
         }
     ]
