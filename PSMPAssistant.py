@@ -123,7 +123,6 @@ class Utility:
     # Check systemd service status
     @staticmethod
     def get_service_status(service_name):
-            
             try:
                 result = subprocess.check_output(f"systemctl is-active {service_name}", shell=True, universal_newlines=True).strip()
                 return f"{SUCCESS} Running" if result == "active" else f"{ERROR} Inactive"
@@ -305,6 +304,8 @@ class SystemConfiguration:
 
         # Check PSMP communication with the Vault
         if service_statuses["psmpsrv"] == f"{SUCCESS} Running":
+            # Default case, not communicating
+            service_statuses["psmpsrv"] = f"{ERROR} Running but not communicating with Vault"
             log_content = Utility.read_file("/var/opt/CARKpsmp/logs/PSMPConsole.log")
             if log_content:
                 log_content = "".join(log_content)
@@ -314,6 +315,7 @@ class SystemConfiguration:
                     service_statuses["psmpsrv"] = f"{SUCCESS} Running and communicating with Vault"
                 else:
                     service_statuses["psmpsrv"] = f"{ERROR} Running but not communicating with Vault"
+                    
 
         return service_statuses
 
@@ -724,7 +726,40 @@ class SystemConfiguration:
                 logging.info(f"{SUCCESS} No SELinux denials found for PSMP component.")
 
         except Exception as e:
-            logging.error(f"Error while checking SELinux denials: {e}")
+            logging.error(f"{SUCCESS} SELinux not installed on the macahine.")
+
+    # SUSE Post-installation steps validation
+    def suse_post_installation_steps():
+        logging.info("\nVerifying SUSE post-installation steps:")
+        try:
+            sshd_config_path = '/etc/ssh/sshd_config'
+            if os.path.exists(sshd_config_path):
+                with open(sshd_config_path, 'r') as file:
+                    config_lines = file.readlines()
+
+                permit_empty_passwords_set = False
+                for line in config_lines:
+                    stripped = line.strip()
+                    # Ignore commented or empty lines
+                    if stripped.startswith('#') or not stripped:
+                        continue
+                    if stripped.lower().startswith('permitemptypasswords'):
+                        permit_empty_passwords_set = True
+                        parts = stripped.split()
+                        if len(parts) >= 2 and parts[1].lower() == 'no':
+                            logging.info(f"{SUCCESS} PermitEmptyPasswords is correctly set to 'no'.")
+                        else:
+                            logging.info(f"{ERROR} PermitEmptyPasswords is set incorrectly. Please change it to 'PermitEmptyPasswords no'.")
+                        break
+
+                if not permit_empty_passwords_set:
+                    logging.info(f"{ERROR} PermitEmptyPasswords is missing in /etc/ssh/sshd_config. Please add 'PermitEmptyPasswords no'.")
+
+            else:
+                logging.info(f"{sshd_config_path} not found. Please ensure the file exists and is configured correctly.")
+
+        except Exception as e:
+            logging.info(f"An unexpected error occurred: {e}")
 
     # Restoring SELinux status, if changed.
     def restore_selinux_status():
@@ -750,7 +785,7 @@ class SystemConfiguration:
                     # Stop and disable the nscd service
                     subprocess.run(["systemctl", "stop", "nscd"], check=True)
                     subprocess.run(["systemctl", "disable", "nscd"], check=True)
-                    logging.info("{WARNING} NSCD Stopped and Disabled.")
+                    logging.info(f"{WARNING} NSCD Stopped and Disabled.")
             else:
                 logging.info(f"NSCD Service Status: {SUCCESS} Not running, as expected.")
         except subprocess.CalledProcessError as e:
@@ -761,30 +796,19 @@ class SystemConfiguration:
         nsswitch_path = "/etc/nsswitch.conf"
         logging.info("\nConfiguration Check for nsswitch.conf:")
         sleep(2)
-        
+
         try:
             psmp_version = float(psmp_version)
         except ValueError:
             logging.info("Invalid PSMP version.")
             return False
 
-        # Define expected configurations as lists of required keywords
-        expected_config_v12_2_or_newer = {
-            "passwd": ["files", "psmp", "sss"],
-            "group": ["files", "psmp", "sss"],
-        }
-
-        expected_config_older_than_v12_2 = {
-            "passwd": ["files", "psmp", "sss"],
-            "shadow": ["files", "sss"],
-            "group": ["files", "psmp", "sss"],
-        }
-
         if not SystemConfiguration.is_integrated(psmp_version):
             logging.info(f"{SUCCESS} nsswitch.conf is correctly configured.")
             return False
 
-        expected_config = expected_config_v12_2_or_newer if psmp_version >= 12.2 else expected_config_older_than_v12_2
+        required_services = ["passwd", "group"]
+        misconfigurations = []
 
         try:
             with open(nsswitch_path, "r") as f:
@@ -793,25 +817,23 @@ class SystemConfiguration:
             logging.info(f"{nsswitch_path} not found.")
             return False
 
-        # Parse the file content
-        actual_config = {}
         for line in content:
             line = line.strip()
-            if line and not line.startswith("#"):
-                key, *value = line.split(":")
-                actual_config[key.strip()] = value[0].strip() if value else ""
+            if not line or line.startswith("#"):
+                continue
+            if ':' not in line:
+                continue
 
-        # Compare actual config to ensure all expected values are present
-        misconfigurations = []
-        for key, expected_values in expected_config.items():
-            actual_value = actual_config.get(key, "")
-            if not all(expected in actual_value.split() for expected in expected_values):
-                misconfigurations.append((key, actual_value, " ".join(expected_values)))
+            key, value = map(str.strip, line.split(":", 1))
+            if key in required_services:
+                methods = value.split()
+                if len(methods) < 2 or methods[1] != "psmp":
+                    misconfigurations.append((key, value))
 
         if misconfigurations:
             logging.info(f"{ERROR} Misconfigurations found in /etc/nsswitch.conf:")
-            for key, actual, expected in misconfigurations:
-                logging.info(f" - {key}: found '{actual}', expected to contain '{expected}'")
+            for key, value in misconfigurations:
+                logging.info(f" - {key}: expected 'psmp' as the second source, found: '{value}'")
             return True
         else:
             logging.info(f"{SUCCESS} The nsswitch.conf is correctly configured.")
@@ -864,6 +886,10 @@ class SystemConfiguration:
             logging.info(f"\n{WARNING} RPM Repair required, for repair automation execute ' python3 PSMPAssistant.py repair '")
             sleep(2)
             return
+        
+        # SUSE Post-installation steps validation
+        if distro_name == "SLES":
+            SystemConfiguration.suse_post_installation_steps()
 
         # Search for failed connection attempts in the secure log
         SystemConfiguration.search_logs_patterns(distro_name)
@@ -883,8 +909,7 @@ class SystemConfiguration:
         SystemConfiguration.disable_nscd_service()
 
         # Offer the customer to repair the PSMP Installation RPM
-        if service_status.get('psmpsrv', 'Unavailable') != f"{SUCCESS} Running and communicating with Vault":
-            if not nsswitch_changes:
+        if service_status.get('psmpsrv', 'Unavailable') != f"{SUCCESS} Running and communicating with Vault" or nsswitch_changes:
                 logging.info(f"\n{WARNING} Recommended to proceed with a RPM installation repair, for repair automation execute ' python3 PSMPAssistant.py repair '")
 
         # Restoring SELinux status, if changed.
