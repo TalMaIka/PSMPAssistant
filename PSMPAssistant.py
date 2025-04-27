@@ -98,7 +98,7 @@ class Utility:
     | |_) \___ \| |\/| | |_) / _ \ / __/ __| / __| __/ _` | '_ \| __|
     |  __/ ___) | |  | |  __/ ___ \\__ \__ \ \__ \ || (_| | | | | |_ 
     |_|   |____/|_|  |_|_| /_/   \_\___/___/_|___/\__\__,_|_| |_|\__|
-        © 2025 CyberArk Community, Developed By Tal.M"""
+                      © 2025 CyberArk Community"""
         logging.info(f"{logo}\n\n")
 
     # Collect PSMP machine logs and creating a zip file
@@ -148,7 +148,7 @@ class SystemConfiguration:
 
     # Constructor for SystemConfiguration
     def __init__(self):
-        self.psmp_version = self.get_installed_psmp_version()
+        self.psmp_version = self.get_installed_psmp_version()[0]
     
     # Load PSMP versions from a JSON file
     def load_psmp_versions_json(file_path):
@@ -158,42 +158,44 @@ class SystemConfiguration:
     # Get the installed PSMP version
     def get_installed_psmp_version():
         try:
-            result = subprocess.check_output("rpm -qa | grep -i cark", shell=True, universal_newlines=True).strip()
+            result = subprocess.check_output(
+                "rpm -qa | grep -i cark", 
+                shell=True, 
+                universal_newlines=True
+            ).strip()
             
             if result:
                 lines = result.splitlines()
                 for line in lines:
                     if "infra" in line.lower():
                         continue
-                    
-                    parts = line.split('-')
-                    if len(parts) > 1:
-                        version = parts[1]
+
+                    # Save the full line for full_version
+                    full_version = line.strip()
+
+                    # Use regex to find the first version pattern like 14.4.0 or 12.0.1
+                    match = re.search(r'(\d+)\.(\d+)', line)
+                    if match:
+                        major, minor = match.groups()
+                        main_version = f"{major}.{minor}"
+
+                        # Map version 12.0X to 12.X format
+                        if main_version.startswith("12.0"):
+                            main_version = main_version.replace("12.0", "12.")
                         
-                        # Extract major and minor version numbers
-                        try:
-                            major, minor, *_ = version.split('.')
-                            main_version = f"{major}.{minor}"
-                            
-                            # Map version 12.0X to 12.X format
-                            if main_version.startswith("12.0"):
-                                main_version = main_version.replace("12.0", "12.")
-                            
-                            return main_version
-                        except ValueError:
-                            logging.warning(f"{WARNING} Unable to parse version from: {version}")
+                        return main_version, full_version
+                    else:
+                        logging.warning(f"{WARNING} Unable to extract version from line: {line}")
             
-            # Return None if no valid version is found
-            return None
-        
+            return None, None
+
         except subprocess.CalledProcessError:
-            # Log and return None if the command fails
             for arg in sys.argv:
                 if arg == "install":
-                    return None
+                    return None, None
         except Exception as e:
             logging.error(f"{ERROR} An error occurred: {e}")
-            return None
+            return None, None
 
     # Get the Linux distribution and version
     def get_linux_distribution():
@@ -846,8 +848,8 @@ class SystemConfiguration:
         if not psmp_version:
             logging.info(f"\n{ERROR} No PSMP version found.")
             logging.info(f"\n{WARNING} Kindly proceed with PSMP RPM repair by executing: 'python3 PSMPAssistant.py repair'")
-            sys.exit(1)
-            
+            return
+        
         # Get the Linux distribution and version
         logging.info("\nPSMP Compatibility Check:")
         sleep(2)
@@ -994,26 +996,39 @@ class RPMAutomation:
             return False
 
     # Automates RPM repair for the specified PSMP version.
-    def rpm_repair(psmp_version):
-        logging.info(f"\nPSMP documentation for installation steps.\n https://docs.cyberark.com/pam-self-hosted/{psmp_version}/en/content/pas%20inst/installing-the-privileged-session-manager-ssh-proxy.htm?tocpath=Installation%7CInstall%20PAM%20-%20Self-Hosted%7CInstall%20PSM%20for%20SSH%7C_____0")
+    def rpm_repair(psmp_version,psmp_short_version):
         logging.info("\nPSMP RPM Installation Repair:")
         logging.info(f"PSMP Version Detected: {psmp_version}")
         logging.info("Searching the machine for version matching installation files...")
         sleep(2)
+
+        def parse_version(s):
+            m = re.search(r'(CARKpsmp)-(\d+\.\d+\.\d+)[-.](\d+)', s)
+            return m.groups() if m else (None, None, None)
+        
         try:
             # Step 1: Search for RPM files and filter by PSMP version in one loop
             rpm_files = [
-                os.path.join(root, file)
-                for root, _, files in os.walk('/')
-                for file in files if file.startswith('CARK') and file.endswith('.rpm') and '/Trash/files/' not in os.path.join(root, file)
+            os.path.join(root, file)
+            for root, _, files in os.walk('/')
+            for file in files
+            if file.startswith('CARK') and file.endswith('.rpm') and '/Trash/files/' not in os.path.join(root, file)
             ]
+            print(rpm_files)
 
-            # Manual mapping 12.X version to 12.0X
+            # Manual mapping 12.X to 12.0X
             parts = psmp_version.split('.')
             if len(parts) == 2 and parts[0] == "12" and parts[1].isdigit():
                 psmp_version = f"12.0{parts[1]}"
 
-            matching_rpms = [rpm for rpm in rpm_files if psmp_version in rpm and "infra" not in rpm]
+            name, ver, build = parse_version(psmp_version)
+            matching_rpms = []
+            for rpm in rpm_files:
+                parsed = parse_version(rpm)
+                if parsed:
+                    rpm_name, rpm_ver, rpm_build = parsed
+                    if rpm_name == name and rpm_ver == ver and rpm_build == build and "infra" not in rpm:
+                        matching_rpms.append(rpm)
 
             if not matching_rpms:
                 logging.info(f"{ERROR} No RPM file found matching version {psmp_version}. Please ensure the correct version is installed.")
@@ -1107,7 +1122,7 @@ class RPMAutomation:
                 return
 
             # Handle IntegratedMode RPM repair in one block
-            if SystemConfiguration.is_integrated(psmp_version) and float(psmp_version) <= 13.2:
+            if SystemConfiguration.is_integrated(psmp_short_version) and float(psmp_short_version) <= 13.2:
                 integrated_rpm_dir = os.path.join(install_folder, "IntegratedMode")
                 integrated_rpm_files = [
                     os.path.join(integrated_rpm_dir, rpm)
@@ -1300,7 +1315,7 @@ class SideFeatures:
 class CommandHandler:
 
     # Checking for command-line argument
-    def command_line_args(psmp_version):
+    def command_line_args(psmp_version,psmp_short_version):
         skip_debug = False
         for arg in sys.argv:
             if "--skip-debug" in sys.argv:
@@ -1313,7 +1328,7 @@ class CommandHandler:
                 Utility.delete_file(Utility.log_filename)
                 return
             elif arg == "repair":
-                RPMAutomation.rpm_repair(psmp_version)
+                RPMAutomation.rpm_repair(psmp_version,psmp_short_version)
                 return
         
         print(f"{ERROR} Invalid agrument.")
@@ -1322,16 +1337,17 @@ class CommandHandler:
 class PSMPAssistant:
     def __init__(self):
         self.psmp_versions = SystemConfiguration.load_psmp_versions_json("src/psmp_versions.json")
-        self.psmp_version = SystemConfiguration.get_installed_psmp_version()
+        self.psmp_version = SystemConfiguration.get_installed_psmp_version()[1] # CARKpsmp-12.06.10-7.x86_64
+        self.psmp_short_version = SystemConfiguration.get_installed_psmp_version()[0] # 12.6
         self.REPAIR_REQUIRED = False
     
     def run_diagnostics(self):
         logging.info("Starting PSMP System Diagnostics...")
-        SystemConfiguration.machine_conf_valid(self.psmp_versions,self.psmp_version,self.REPAIR_REQUIRED)
+        SystemConfiguration.machine_conf_valid(self.psmp_versions,self.psmp_short_version,self.REPAIR_REQUIRED)
         logging.info("\nDiagnostics completed.")
     
     def execute_command(self):
-        CommandHandler.command_line_args(self.psmp_version)
+        CommandHandler.command_line_args(self.psmp_version,self.psmp_short_version)
     
 
 def main():
