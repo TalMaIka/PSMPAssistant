@@ -1,5 +1,5 @@
 # Copyright: © 2025 CyberArk Community, Developed By Tal.M
-# Version: 1.1
+# Version: 1.0
 # Description: This tool performs a series of checks and operations related to CyberArk's Privileged Session Manager for SSH Proxy (PSMP) and SSHD configuration on Linux systems.
 
 import json
@@ -1014,7 +1014,6 @@ class RPMAutomation:
             for file in files
             if file.startswith('CARK') and file.endswith('.rpm') and '/Trash/files/' not in os.path.join(root, file)
             ]
-            print(rpm_files)
 
             # Manual mapping 12.X to 12.0X
             parts = psmp_version.split('.')
