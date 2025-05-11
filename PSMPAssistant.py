@@ -829,7 +829,7 @@ class SystemConfiguration:
             key, value = map(str.strip, line.split(":", 1))
             if key in required_services:
                 methods = value.split()
-                if len(methods) < 2 or methods[1] != "psmp":
+                if "psmp" not in methods:
                     misconfigurations.append((key, value))
 
         if misconfigurations:
@@ -871,6 +871,7 @@ class SystemConfiguration:
             logging.info("\n"+message)
 
         # Check nsswitch configuration
+        nsswitch_changes = False # Base value
         if SystemConfiguration.is_integrated(psmp_version):
             nsswitch_changes=SystemConfiguration.verify_nsswitch_conf(psmp_version)
 
@@ -880,10 +881,10 @@ class SystemConfiguration:
         # Check SSHD configuration
         REPAIR_REQUIRED = SystemConfiguration.check_sshd_config(psmp_version,REPAIR_REQUIRED)
 
-        #Check SELinux
+        # Check SELinux
         temp_disable = SystemConfiguration.check_selinux()
 
-        #Certain point to Check for REPAIR_REQUIRED flag
+        # Certain point to Check for REPAIR_REQUIRED flag
         if REPAIR_REQUIRED or nsswitch_changes:
             logging.info(f"\n{WARNING} RPM Repair required, for repair automation execute ' python3 PSMPAssistant.py repair '")
             sleep(2)
