@@ -1,5 +1,5 @@
 # Copyright: © 2025 CyberArk Community, Developed By Tal.M
-# Version: 1.0
+# Version: 1.1
 # Description: This tool performs a series of checks and operations related to CyberArk's Privileged Session Manager for SSH Proxy (PSMP) and SSHD configuration on Linux systems.
 
 import json
@@ -1000,6 +1000,9 @@ class RPMAutomation:
     def rpm_repair(psmp_version,psmp_short_version):
         logging.info("\nPSMP RPM Installation Repair:")
         logging.info(f"PSMP Version Detected: {psmp_version}")
+        integration_mode = SystemConfiguration.is_integrated(psmp_short_version)
+        logging.info(f"Integrated mode: {integration_mode}")
+        logging.info
         logging.info("Searching the machine for version matching installation files...")
         sleep(2)
 
@@ -1089,6 +1092,14 @@ class RPMAutomation:
                     for line in psmpparms_content
                 ]
 
+                # Fill in the SSHD Integration mode
+                if float(psmp_short_version) <= 13.2 and not integration_mode:
+                    psmpparms_content = [
+                    ("InstallCyberArkSSHD=Yes\n" if not integration_mode else "InstallCyberArkSSHD=Integrated\n")
+                    if line.startswith("InstallCyberArkSSHD=") else line
+                    for line in psmpparms_content
+                ]
+
                 # Save changes to psmpparms.sample file
                 with open("/var/tmp/psmpparms", "w") as f:
                     f.writelines(psmpparms_content)
@@ -1122,7 +1133,7 @@ class RPMAutomation:
                 return
 
             # Handle IntegratedMode RPM repair in one block
-            if SystemConfiguration.is_integrated(psmp_short_version) and float(psmp_short_version) <= 13.2:
+            if integration_mode and float(psmp_short_version) <= 13.2:
                 integrated_rpm_dir = os.path.join(install_folder, "IntegratedMode")
                 integrated_rpm_files = [
                     os.path.join(integrated_rpm_dir, rpm)
