@@ -1172,34 +1172,62 @@ class SideFeatures:
 
     # Generate PSMP connection string based on user inputs
     def generate_psmp_connection_string():
-        print("PSMP Connection String Generator")
-        print("Example: [vaultuser]@[targetuser]#[domainaddress]@[targetaddress]#[targetport]@[PSM for SSH address]")
+        print("PSMP Connection String Generator...")
         print("More information: https://cyberark.my.site.com/s/article/PSM-for-SSH-Syntax-Cheat-Sheet")
         print("Please provide the following details to generate the connection string:\n")
         # Collect inputs from the user
         print(f"{WARNING} MFA Caching requires FQDN of the Domain-Vault user.\n")
         print(f"{WARNING} Target user and target FQDN are case sensitive.\n")
+
+        # Step 1: Vault user type
         vault_user = input("Enter vault user: ").strip()
+
+        # Step 2: Target user
         target_user = input("Enter target user: ").strip()
-        target_user_domain = input("Enter target user domain address (leave empty if local): ").strip()
-        target_address = input("Enter target address: ").strip()
-        target_port = input("Enter target port (leave empty if default port 22): ").strip()
-        psm_for_ssh_address = input("Enter PSM for SSH address: ").strip()
+        target_user_domain = input("Enter target user domain (Leave blank if local): ").strip()
 
-        # Construct the connection string
-        connection_string = f"{vault_user}@{target_user}"
-        
+        # Step 3: Target host
+        target_address = input("Enter target address (FQDN/IP): ").strip()
+
+        # Step 4: Target and Tunnel ports
+        target_port = input("Enter target port (Leave blank if default port 22): ").strip()
+        tunnel_port = input("Enter tunnel port (Leave empty if not using a tunnel): ").strip()
+
+        # Step 5: PSM for SSH address
+        psm_for_ssh = input("Enter PSM for SSH address: ").strip()
+
+        # ----------------- Build Connection String -----------------
+
+        parts = []
+
+        # Vault user format
+        parts.append(f"{vault_user}")
+
+        parts.append(f"@{target_user}")
+
+        # Optional domain for target user
         if target_user_domain:
-            connection_string += f"#{target_user_domain}"
-        
-        connection_string += f"@{target_address}"
-        
-        if target_port and target_port != '22':
-            connection_string += f"#{target_port}"
-        
-        connection_string += f"@{psm_for_ssh_address}"
+            parts[-1] += f"#{target_user_domain}"
 
-        return f"{SUCCESS} The connection string is: "+connection_string
+        # Target host
+        parts.append(f"@{target_address}")
+
+        # Target port
+        if target_port and target_port != "22":
+            parts[-1] += f"#{target_port}"
+            if tunnel_port:
+                parts[-1] += f"#{tunnel_port}"
+        elif tunnel_port:
+            # Assume default port 22 if tunnel port is provided but no target port
+            parts[-1] += f"#22#{tunnel_port}"
+
+        # PSM for SSH address
+        parts.append(f"@{psm_for_ssh}")
+
+        connection_string = ''.join(parts)
+
+        print(f"\n{SUCCESS} Generated PSMP Connection String:")
+        return connection_string
     
     # Log collection function
     def logs_collect(skip_debug):
