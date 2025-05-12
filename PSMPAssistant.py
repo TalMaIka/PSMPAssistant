@@ -690,17 +690,25 @@ class SystemConfiguration:
     def check_selinux():
         logging.info("\nChecking SELinux...")
         sleep(2)
-        
         try:
             # Check the current SELinux mode
             mode_result = subprocess.run(["getenforce"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             selinux_mode = mode_result.stdout.strip()
             logging.info(f"Current SELinux mode: {selinux_mode.lower()}")
-
+            # If enforcing, restart psmp service for denials to appear of any
+            if selinux_mode.lower() == "enforcing": 
+                logging.info(f"{WARNING} Restarting PSMP service to check for denials...")
+                try:
+                    subprocess.run(["systemctl", "restart", "psmpsrv"], check=True, timeout=30)
+                except subprocess.CalledProcessError as e:
+                    logging.info(f"{WARNING} Unable to restart service: {e}")
             # Search for SELinux denials related to PSMP
             result = subprocess.run(
-                ["ausearch", "-m", "AVC,USER_AVC", "-ts", "recent", "-f", "CARK"],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
+            "tail -n 300 /var/log/audit/audit.log | grep denied | grep -v syntaxparser",
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
             )
             
             if result.stdout.strip():  # If denials exist
@@ -787,7 +795,7 @@ class SystemConfiguration:
                     # Stop and disable the nscd service
                     subprocess.run(["systemctl", "stop", "nscd"], check=True)
                     subprocess.run(["systemctl", "disable", "nscd"], check=True)
-                    logging.info(f"{WARNING} NSCD Stopped and Disabled.")
+                    logging.info(f"{SUCCESS} NSCD Stopped and Disabled.")
             else:
                 logging.info(f"NSCD Service Status: {SUCCESS} Not running, as expected.")
         except subprocess.CalledProcessError as e:
