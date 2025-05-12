@@ -704,7 +704,7 @@ class SystemConfiguration:
                     logging.info(f"{WARNING} Unable to restart service: {e}")
             # Search for SELinux denials related to PSMP
             result = subprocess.run(
-            "tail -n 300 /var/log/audit/audit.log | grep denied | grep -v syntaxparser",
+            "tail -n 50 /var/log/audit/audit.log | grep denied | grep -v syntaxparser",
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -712,23 +712,26 @@ class SystemConfiguration:
             )
             
             if result.stdout.strip():  # If denials exist
-                # Filter lines to include only those containing "CARKpsmp"
+                # Filter lines to include only those containing "CARK"
                 filtered_lines = [
-                    line for line in result.stdout.splitlines() if "CARKpsmp" in line
+                    line for line in result.stdout.splitlines() if "psmp" in line
                 ]
 
                 if filtered_lines:  # If there are relevant denials
-                    for line in filtered_lines:
+                    for line in filtered_lines[-5:]:
                         logging.info(line)
                     
                     if selinux_mode.lower() == "enforcing":
-                        user_input = input("Do you want to temporarily disable SELinux? (y/n): ")
+                        user_input = input("Do you allow to recreate the /.autorelabel during the next system reboot? (y/n): ")
                         if user_input.lower() in ["yes", "y"]:
-                            subprocess.run(["setenforce", "0"])
-                            logging.info(f"{WARNING} SELinux enforcement disabled temporarily. (setenforce 0)")
+                            logging.info("\n")
+                            subprocess.run(["fixfiles", "onboot"])
+                            sleep(2)
+                            logging.info(f"{SUCCESS} Creating /.autorelabel and during the next system reboot all files should be relabeled.")
+                            logging.info(f"{WARNING} For the changes to take effect, please reboot the system !.")
                             return True
                         else:
-                            logging.info(f"{WARNING} SELinux remains enforced.")
+                            logging.info(f"{WARNING} SELinux denials exists, run ' sudo fixfile onboot ', and procced with a reboot.")
                 else:
                     logging.info(f"{SUCCESS} No relevant SELinux denials found for 'CARKpsmp'.")
 
@@ -890,7 +893,10 @@ class SystemConfiguration:
         REPAIR_REQUIRED = SystemConfiguration.check_sshd_config(psmp_version,REPAIR_REQUIRED)
 
         # Check SELinux
-        temp_disable = SystemConfiguration.check_selinux()
+        relabel_called = SystemConfiguration.check_selinux()
+        # fixfiles onboot was executed
+        if relabel_called:
+            return
 
         # Certain point to Check for REPAIR_REQUIRED flag
         if REPAIR_REQUIRED or nsswitch_changes:
@@ -922,10 +928,6 @@ class SystemConfiguration:
         # Offer the customer to repair the PSMP Installation RPM
         if service_status.get('psmpsrv', 'Unavailable') != f"{SUCCESS} Running and communicating with Vault" or nsswitch_changes:
                 logging.info(f"\n{WARNING} Recommended to proceed with a RPM installation repair, for repair automation execute ' python3 PSMPAssistant.py repair '")
-
-        # Restoring SELinux status, if changed.
-        if temp_disable:
-            SystemConfiguration.restore_selinux_status()
 
 
 class RPMAutomation:
