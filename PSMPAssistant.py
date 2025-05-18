@@ -327,7 +327,7 @@ class SystemConfiguration:
         try:
             subprocess.run(["nc", "-h"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
             return True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             return False
 
     def get_vault_address(file_path):
@@ -361,10 +361,10 @@ class SystemConfiguration:
         vault_ini_path = "/etc/opt/CARKpsmp/vault/vault.ini"
         if service_status["psmpsrv"] == f"{ERROR} Inactive" or service_status["psmpsrv"] == f"{ERROR} Running but not communicating with Vault":
             logging.info(f"{ERROR} The PSMP service is inactive.")
+
             # Communication check with vault server
             if not SystemConfiguration.is_nc_installed():
-                logging.info(f"{WARNING} Netcat (nc) is not installed. Please install it to proceed with the communication check.")
-                sys.exit(1)
+                logging.info(f"{WARNING} Netcat (nc) is not installed. Skipping the communication check.")
 
             # Fetch the vault address from the /opt/CARKpsmp/vault.ini file
             vault_address = SystemConfiguration.get_vault_address(vault_ini_path)
@@ -374,11 +374,12 @@ class SystemConfiguration:
             SystemConfiguration.verify_vault_address(vault_address,vault_ini_path)
 
             # Perform the communication check to the Vault IP
-            logging.info("Checking communication to the vault...")
-            sleep(2)
             try:
-                subprocess.run(["nc", "-z", vault_address, "1858"], check=True)
-                logging.info(f"{SUCCESS} Communication to the vault is successful.")
+                if SystemConfiguration.is_nc_installed():
+                    logging.info("Checking communication to the vault...")
+                    sleep(2)
+                    subprocess.run(["nc", "-z", vault_address, "1858"], check=True)
+                    logging.info(f"{SUCCESS} Communication to the vault is successful.")
                 sleep(1)
                 logging.info(f"{WARNING} Restarting PSMP service...")
                 try:
@@ -695,45 +696,42 @@ class SystemConfiguration:
             mode_result = subprocess.run(["getenforce"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             selinux_mode = mode_result.stdout.strip()
             logging.info(f"Current SELinux mode: {selinux_mode.lower()}")
-            # If enforcing, restart psmp service for denials to appear of any
+
+            # SELinux enforcing...
             if selinux_mode.lower() == "enforcing": 
                 logging.info(f"{WARNING} Restarting PSMP service to check for denials...")
                 try:
                     subprocess.run(["systemctl", "restart", "psmpsrv"], check=True, timeout=30)
                 except subprocess.CalledProcessError as e:
                     logging.info(f"{WARNING} Unable to restart service: {e}")
-            # Search for SELinux denials related to PSMP
-            result = subprocess.run(
-            "tail -n 50 /var/log/audit/audit.log | grep denied | grep -v syntaxparser",
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-            )
-            
-            if result.stdout.strip():  # If denials exist
-                # Filter lines to include only those containing "CARK"
-                filtered_lines = [
-                    line for line in result.stdout.splitlines() if "psmp" in line
-                ]
 
-                if filtered_lines:  # If there are relevant denials
-                    for line in filtered_lines[-5:]:
-                        logging.info(line)
-                    
-                    if selinux_mode.lower() == "enforcing":
-                        user_input = input("Do you allow to recreate the /.autorelabel during the next system reboot? (y/n): ")
-                        if user_input.lower() in ["yes", "y"]:
-                            logging.info("\n")
-                            subprocess.run(["fixfiles", "onboot"])
-                            sleep(2)
-                            logging.info(f"{SUCCESS} Creating /.autorelabel and during the next system reboot all files should be relabeled.")
-                            logging.info(f"{WARNING} For the changes to take effect, please reboot the system !.")
-                            return True
-                        else:
-                            logging.info(f"{WARNING} SELinux denials exists, run ' sudo fixfile onboot ', and procced with a reboot.")
-                else:
-                    logging.info(f"{SUCCESS} No relevant SELinux denials found for 'CARKpsmp'.")
+                # Search for SELinux denials related to PSMP
+                sleep(2)
+                result = subprocess.run(
+                    ["ausearch", "-m", "AVC,USER_AVC", "-ts", "recent", "-f", "psmp"],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
+                )
+                
+                if result.stdout.strip():  # If denials exist
+                    # Filter lines to include only those containing "psmp"
+                    filtered_lines = [
+                        line for line in result.stdout.splitlines() if "psmp" in line and "syntaxparser" not in line
+                    ]
+
+                    if filtered_lines:  # If there are relevant denials
+                        for line in filtered_lines[-5:]:
+                            logging.info(line)
+                        
+                        if selinux_mode.lower() == "enforcing":
+                            user_input = input("Do you want to temporarily disable SELinux? (y/n): ")
+                            if user_input.lower() in ["yes", "y"]:
+                                subprocess.run(["setenforce", "0"])
+                                logging.info(f"{WARNING} SELinux enforcement disabled temporarily. (setenforce 0)")
+                                return True
+                            else:
+                                logging.info(f"{WARNING} SELinux remains enforced.")
+                    else:
+                        logging.info(f"{SUCCESS} No relevant SELinux denials found for 'CARKpsmp'.")
 
             else:
                 logging.info(f"{SUCCESS} No SELinux denials found for PSMP component.")
@@ -893,10 +891,7 @@ class SystemConfiguration:
         REPAIR_REQUIRED = SystemConfiguration.check_sshd_config(psmp_version,REPAIR_REQUIRED)
 
         # Check SELinux
-        relabel_called = SystemConfiguration.check_selinux()
-        # fixfiles onboot was executed
-        if relabel_called:
-            return
+        temp_disable = SystemConfiguration.check_selinux()
 
         # Certain point to Check for REPAIR_REQUIRED flag
         if REPAIR_REQUIRED or nsswitch_changes:
@@ -928,6 +923,10 @@ class SystemConfiguration:
         # Offer the customer to repair the PSMP Installation RPM
         if service_status.get('psmpsrv', 'Unavailable') != f"{SUCCESS} Running and communicating with Vault" or nsswitch_changes:
                 logging.info(f"\n{WARNING} Recommended to proceed with a RPM installation repair, for repair automation execute ' python3 PSMPAssistant.py repair '")
+
+        # Restoring SELinux status, if changed.
+        if temp_disable:
+            SystemConfiguration.restore_selinux_status()
 
 
 class RPMAutomation:
@@ -1182,62 +1181,36 @@ class SideFeatures:
 
     # Generate PSMP connection string based on user inputs
     def generate_psmp_connection_string():
-        print("PSMP Connection String Generator...")
+        print("PSMP Connection String Generator")
         print("More information: https://cyberark.my.site.com/s/article/PSM-for-SSH-Syntax-Cheat-Sheet")
         print("Please provide the following details to generate the connection string:\n")
         # Collect inputs from the user
         print(f"{WARNING} MFA Caching requires FQDN of the Domain-Vault user.\n")
         print(f"{WARNING} Target user and target FQDN are case sensitive.\n")
-
-        # Step 1: Vault user type
         vault_user = input("Enter vault user: ").strip()
-
-        # Step 2: Target user
         target_user = input("Enter target user: ").strip()
-        target_user_domain = input("Enter target user domain (Leave blank if local): ").strip()
+        target_user_domain = input("Enter target user domain address (leave empty if local): ").strip()
+        target_address = input("Enter target address: ").strip()
+        target_port = input("Enter target port (leave empty if default port 22): ").strip()
+        psm_for_ssh_address = input("Enter PSM for SSH address: ").strip()
 
-        # Step 3: Target host
-        target_address = input("Enter target address (FQDN/IP): ").strip()
-
-        # Step 4: Target and Tunnel ports
-        target_port = input("Enter target port (Leave blank if default port 22): ").strip()
-        tunnel_port = input("Enter tunnel port (Leave empty if not using a tunnel): ").strip()
-
-        # Step 5: PSM for SSH address
-        psm_for_ssh = input("Enter PSM for SSH address: ").strip()
-
-        # ----------------- Build Connection String -----------------
-
-        parts = []
-
-        # Vault user format
-        parts.append(f"{vault_user}")
-
-        parts.append(f"@{target_user}")
-
-        # Optional domain for target user
+        # Construct the connection string
+        connection_string = f"{vault_user}@{target_user}"
+        
         if target_user_domain:
-            parts[-1] += f"#{target_user_domain}"
-
-        # Target host
-        parts.append(f"@{target_address}")
-
-        # Target port
-        if target_port and target_port != "22":
-            parts[-1] += f"#{target_port}"
-            if tunnel_port:
-                parts[-1] += f"#{tunnel_port}"
-        elif tunnel_port:
-            # Assume default port 22 if tunnel port is provided but no target port
-            parts[-1] += f"#22#{tunnel_port}"
-
-        # PSM for SSH address
-        parts.append(f"@{psm_for_ssh}")
-
-        connection_string = ''.join(parts)
+            connection_string += f"#{target_user_domain}"
+        
+        connection_string += f"@{target_address}"
+        
+        if target_port and target_port != '22':
+            connection_string += f"#{target_port}"
+        
+        connection_string += f"@{psm_for_ssh_address}"
 
         print(f"\n{SUCCESS} Generated PSMP Connection String:")
         return connection_string
+
+        
     
     # Log collection function
     def logs_collect(skip_debug):
