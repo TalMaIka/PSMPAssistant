@@ -170,32 +170,30 @@ class SystemConfiguration:
                     if "infra" in line.lower():
                         continue
 
-                    # Save the full line for full_version
                     full_version = line.strip()
 
-                    # Use regex to find the first version pattern like 14.4.0 or 12.0.1
                     match = re.search(r'(\d+)\.(\d+)', line)
                     if match:
                         major, minor = match.groups()
                         main_version = f"{major}.{minor}"
 
-                        # Map version 12.0X to 12.X format
                         if main_version.startswith("12.0"):
                             main_version = main_version.replace("12.0", "12.")
                         
                         return main_version, full_version
                     else:
                         logging.warning(f"{WARNING} Unable to extract version from line: {line}")
-            
-            return None, None
+
+            logging.error(f"{ERROR} No valid PSMP version found. Exiting.")
+            sys.exit(1)
 
         except subprocess.CalledProcessError:
-            for arg in sys.argv:
-                if arg == "install":
-                    return None, None
+            logging.error(f"{ERROR} No valid PSMP version found. Exiting.")
+            sys.exit(1)
+
         except Exception as e:
-            logging.error(f"{ERROR} An error occurred: {e}")
-            return None, None
+            logging.error(f"{ERROR} An unexpected error occurred: {e}")
+            sys.exit(1)
 
     # Get the Linux distribution and version
     def get_linux_distribution():
