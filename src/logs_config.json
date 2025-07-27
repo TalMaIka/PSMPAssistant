@@ -1,6 +1,7 @@
 {
     "log_folders": [
         "/var/log/secure",
+        "/var/log/auth.log",
         "/var/log/messages",
         "/var/opt/CARKpsmp/logs",
         "/etc/ssh/sshd_config",
@@ -43,7 +44,7 @@
         "journalctl -xe"
     ],
     "log_categories": {
-        "OS": ["secure", "messages", "nsswitch.conf","os-release"],
+        "OS": ["secure","auth.log","messages", "nsswitch.conf","os-release"],
         "OS/ssh/sshd_config.d": ["/etc/ssh/sshd_config.d"],
         "OS/ssh": ["sshd_config", "ssh_config"],
         "OS/PAM.d": ["sshd", "password-auth", "system-auth"],
