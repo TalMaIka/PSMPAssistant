@@ -1120,29 +1120,20 @@ class RPMAutomation:
             m = re.search(r'^(CARKpsmp)-((?:\d+\.)*\d+)\.amd64\.deb$', s)
             if not m:
                 return (None, None, None)
-
             name = m.group(1)
             full_version = m.group(2)
-
             parts = full_version.split(".")
             if len(parts) < 2:
                 return (None, None, None)
-
-            # Consider last part as build, rest as main version
             build = parts[-1]
-            version = ".".join(parts[:-1])  # everything except the last
-
+            version = ".".join(parts[:-1])
             return (name, version, build)
 
-        # Check if debconf is preconfigured
         def check_debconf_and_prompt(deb_file_path):
             result = subprocess.run(["debconf-show", "carkpsmp"], capture_output=True, text=True)
-            if not result.stdout.strip():
-                return False
-            return True
+            return bool(result.stdout.strip())
 
         try:
-            # Search for .deb files
             deb_files = [
                 os.path.join(root, file)
                 for root, _, files in os.walk('/')
@@ -1174,52 +1165,59 @@ class RPMAutomation:
             if not RPMAutomation.verify_installation_files(install_folder, psmp_short_version):
                 return
 
-            # Get and verify vault address
             vault_address = SystemConfiguration.get_vault_address(VAULT_INI_PATH)
             SystemConfiguration.verify_vault_address(vault_address, VAULT_INI_PATH)
 
             deb_file_path = os.path.join(install_folder, os.path.basename(deb_location))
-            # Verifying debconf cache database and if not exists, sending the debconf preconfiguration file
             if not check_debconf_and_prompt(deb_file_path):
                 logging.info(f"\n{ERROR} Preconfiguration file not found or not cached. Please run:\n  dpkg-preconfigure {deb_file_path}\n")
                 logging.info("Exiting the repair process. Please ensure to preconfigure the package before repairing.")
                 return
-            logging.info(f"\n{SUCCESS} Preconfiguration file found, Proceeding with repairing.")
 
-            # Proceed to install the .deb file after preconfiguration
+            logging.info(f"\n{SUCCESS} Preconfiguration file found, Proceeding with repairing.")
             logging.info(f"\nInstalling DEB from: {deb_file_path}")
 
             install_cmd = ["dpkg", "-i", "--force-all", deb_file_path]
             process = subprocess.Popen(install_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             out, err = process.communicate()
-            logging.info(out.strip())
-            logging.error(err.strip())
-
-            # Re-create Vault environment
-            choice = input(f"\n{WARNING} Do you wish to re-create Vault enviroment? (y/n): ").lower()
-            if choice not in ['y', 'yes']:
-                logging.info(f"{WARNING} Vault environment creation skipped.")
-            else:
-                logging.info(f"{WARNING} Re-creating Vault environment.")
-                if RPMAutomation.create_cred_file(psmp_short_version, install_folder):
-                    psmp_setup = "/opt/CARKpsmp/bin/psmp_setup.sh"
-                    if os.path.exists(psmp_setup):
-                        os.chmod(psmp_setup, 0o755)
-                        sleep(1)
-                        process = subprocess.Popen(
-                            [psmp_setup, "--finalize", "--credfile", f"{install_folder}/user.cred"],
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                        for line in process.stdout:
-                            logging.info(line.strip())
-                            if "completed with errors" in line or "[ERROR]" in line:
-                                logging.info(f"{ERROR} Vault environment creation failed.")
-                                break
-                        else:
-                            logging.info(f"{SUCCESS} Vault environment creation succeeded.")
+            for line in out.strip().splitlines():
+                logging.info(line)
+            for line in err.strip().splitlines():
+                logging.error(line)
 
         except Exception as e:
             logging.error(f"An error occurred during the DEB repair process: {e}")
+            return
 
+        choice = input(f"\n{WARNING} Do you wish to re-create Vault enviroment? (y/n): ").lower()
+        if choice not in ['y', 'yes']:
+            logging.info(f"{WARNING} Vault environment creation skipped.")
+        else:
+            logging.info(f"{WARNING} Re-creating Vault environment.")
+            if RPMAutomation.create_cred_file(psmp_short_version, install_folder):
+                psmp_setup = "/opt/CARKpsmp/bin/psmp_setup.sh"
+                if os.path.exists(psmp_setup):
+                    os.chmod(psmp_setup, 0o755)
+                    sleep(1)
+                    process = subprocess.Popen(
+                        [psmp_setup, "--finalize", "--credfile", f"{install_folder}/user.cred"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        universal_newlines=True
+                    )
+                    stdout, stderr = process.communicate()
+
+                    for line in stdout.strip().splitlines():
+                        logging.info(line)
+                    for line in stderr.strip().splitlines():
+                        logging.error(line)
+
+                    if "completed with errors" in stdout or "[ERROR]" in stdout or "[ERROR]" in stderr:
+                        logging.error(f"{ERROR} Vault environment creation failed.")
+                    else:
+                        logging.info(f"{SUCCESS} Vault environment creation succeeded.")
+
+        
 
 
     # Automates RPM repair for the specified PSMP version.
