@@ -602,7 +602,7 @@ class SystemConfiguration:
         # Run `sshd -T` to get the active SSHD configuration
         try:
             result = subprocess.run(["sshd", "-T"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True,check=True)
-            sshd_config_output = dict(line.split(None, 1) for line in result.stdout.splitlines() if " " in line)
+            sshd_config_output = dict(line.split(None, 1) for line in result.stdout.splitlines() if len(line.split(None, 1)) == 2)
         except (FileNotFoundError, subprocess.CalledProcessError):
             logging.info(f"{ERROR} Failed to retrieve sshd configuration with 'sshd -T'. Ensure OpenSSH is installed and running.")
             return False
