@@ -56,7 +56,7 @@ def parse_arguments():
     parser.add_argument(
         "--version",
         action="version",
-        version="PSMPAssistant v1.1 by Tal Malka",
+        version="PSMPAssistant v1.1 by Tal.M",
         help="Show program version and exit"
     )
 
@@ -1107,13 +1107,43 @@ class RPMAutomation:
         else:
             logging.info(f"\n{ERROR} CreateCredFile not found in {install_folder}")
 
+    # Step 7 New approach Vault env creation - Finalize PSMP installation
+    def vault_env_recreate(psmp_short_version, install_folder):
+        choice = input(f"\n{WARNING} Do you wish to re-create Vault enviroment? (y/n): ").lower()
+        if choice not in ['y', 'yes']:
+            logging.info(f"{WARNING} Vault environment creation skipped.")
+        else:
+            logging.info(f"{WARNING} Re-creating Vault environment.")
+            if RPMAutomation.create_cred_file(psmp_short_version, install_folder):
+                psmp_setup = "/opt/CARKpsmp/bin/psmp_setup.sh"
+                if os.path.exists(psmp_setup):
+                    os.chmod(psmp_setup, 0o755)
+                    sleep(1)
+                    process = subprocess.Popen(
+                        [psmp_setup, "--finalize", "--credfile", f"{install_folder}/user.cred"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        universal_newlines=True
+                    )
+                    stdout, stderr = process.communicate()
+
+                    for line in stdout.strip().splitlines():
+                        logging.info(line)
+                    for line in stderr.strip().splitlines():
+                        logging.error(line)
+
+                    if "completed with errors" in stdout or "[ERROR]" in stdout or "[ERROR]" in stderr:
+                        logging.error(f"{ERROR} Vault environment creation failed.")
+                    else:
+                        logging.info(f"{SUCCESS} Vault environment creation succeeded.")
+
+
     # Automates the repair process for PSMP installations.
     def deb_repair(psmp_version, psmp_short_version):
         logging.info("\nPSMP DEB Installation Repair (Ubuntu 14.6+):")
         logging.info(f"PSMP Version Detected: {psmp_version}")
         logging.info(f"Integrated mode: True")
         logging.info("Searching the machine for version-matching installation files...")
-        sleep(2)
 
         def parse_version(s):
             print(f"Parsing version from: {s}")
@@ -1188,35 +1218,9 @@ class RPMAutomation:
         except Exception as e:
             logging.error(f"An error occurred during the DEB repair process: {e}")
             return
-
-        choice = input(f"\n{WARNING} Do you wish to re-create Vault enviroment? (y/n): ").lower()
-        if choice not in ['y', 'yes']:
-            logging.info(f"{WARNING} Vault environment creation skipped.")
-        else:
-            logging.info(f"{WARNING} Re-creating Vault environment.")
-            if RPMAutomation.create_cred_file(psmp_short_version, install_folder):
-                psmp_setup = "/opt/CARKpsmp/bin/psmp_setup.sh"
-                if os.path.exists(psmp_setup):
-                    os.chmod(psmp_setup, 0o755)
-                    sleep(1)
-                    process = subprocess.Popen(
-                        [psmp_setup, "--finalize", "--credfile", f"{install_folder}/user.cred"],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        universal_newlines=True
-                    )
-                    stdout, stderr = process.communicate()
-
-                    for line in stdout.strip().splitlines():
-                        logging.info(line)
-                    for line in stderr.strip().splitlines():
-                        logging.error(line)
-
-                    if "completed with errors" in stdout or "[ERROR]" in stdout or "[ERROR]" in stderr:
-                        logging.error(f"{ERROR} Vault environment creation failed.")
-                    else:
-                        logging.info(f"{SUCCESS} Vault environment creation succeeded.")
-
+        
+        # Step 7 New approach Vault env creation - Finalize PSMP installation
+        RPMAutomation.vault_env_recreate(psmp_short_version, install_folder)
         
 
 
@@ -1384,27 +1388,7 @@ class RPMAutomation:
 
         # Step 7 New approach Vault env creation - Finalize PSMP installation
         if float(psmp_short_version) >= 14.6 and successful_installation: 
-            choice = input(f"\n{WARNING} Do you wish to re-create Vault enviroment? (y/n): ").lower()
-            if choice not in ['y', 'yes']:
-                logging.info(f"{WARNING} Vault enviroment re-reaction skipped.")
-            else:
-                logging.info(f"{WARNING} Re-creating Vault enviroment.")
-                # Generating the credfiles.
-                if RPMAutomation.create_cred_file(psmp_short_version,install_folder):
-                    psmp_setup = "/opt/CARKpsmp/bin/psmp_setup.sh"
-                    if os.path.exists(psmp_setup):
-                        os.chmod(psmp_setup, 0o755)
-                        sleep(1)
-
-                        # Run the interactive script
-                        process = subprocess.Popen([psmp_setup, "--finalize", "--credfile", f"{install_folder}/user.cred"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                        for line in process.stdout:
-                            logging.info(line.strip())  # Display the output live
-                            if "completed with errors" in line or "[ERROR]" in line:
-                                logging.info(f"{ERROR} Vault enviroment creation failed.")
-                                break
-                        else:
-                            logging.info(f"\n{SUCCESS} Vault enviroment creation succeeded.")
+            RPMAutomation.vault_env_recreate(psmp_short_version, install_folder)
 
 
 
