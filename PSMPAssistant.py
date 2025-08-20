@@ -154,7 +154,7 @@ class Utility:
     CACHE_DURATION = timedelta(seconds=60)
     
     # Logging to write to the dynamically named file and the console
-    log_filename = datetime.now().strftime("PSMPAssistant-%m-%d-%y__%H-%M.log")
+    log_filename = datetime.now().strftime("PSMPAssistant-%m-%d-%y__%H-%M-%S.log")
     
     # Keep log file in script directory (maintaining original behavior)
     logging.basicConfig(
@@ -696,17 +696,20 @@ class SystemConfiguration:
         for path, line in config_lines:
             if patterns['managed'].search(line):
                 logging.info(f"{WARNING} {path} is managed by: {line.strip()}")
-            
+
+            # ✅ Check PSMP block regardless of comment
+            if patterns['psmp_auth'].search(line):
+                found_flags['psmp_auth_block'] = True
+
+            # ✅ Only check directives if not commented out
             if not line.lstrip().startswith("#"):
-                if patterns['psmp_auth'].search(line):
-                    found_flags['psmp_auth_block'] = True
                 if patterns['allow_user'].match(line):
                     found_flags['allow_user'] = True
                 if patterns['empty_pass'].match(line):
                     found_flags['permit_empty_pass'] = True
                 if patterns['pubkey_auth'].match(line):
                     found_flags['pubkey_auth'] = True
-            
+
             # Early exit if all flags found
             if all(found_flags.values()):
                 break
@@ -733,6 +736,7 @@ class SystemConfiguration:
         
         return repair_required
 
+
     @staticmethod
     def check_debug_level() -> bool:
         """Check debug level configuration"""
@@ -743,17 +747,25 @@ class SystemConfiguration:
             # Get active SSHD configuration
             result = SecurityUtils.safe_subprocess_run(["sshd", "-T"])
             
+            if result.returncode != 0:
+                logging.error(f"{ERROR} sshd -T failed with return code {result.returncode}")
+                if result.stderr:
+                    logging.error(f"{ERROR} sshd -T stderr: {result.stderr.strip()}")
+                if result.stdout:
+                    logging.error(f"{ERROR} sshd -T stdout: {result.stdout.strip()}")
+                return False
+
             sshd_config_output = {}
             for line in result.stdout.splitlines():
                 parts = line.split(None, 1)
                 if len(parts) == 2:
                     sshd_config_output[parts[0]] = parts[1]
-            
+        
         except FileNotFoundError:
             logging.info(f"{ERROR} 'sshd' command not found. Is OpenSSH installed?")
             return False
         except Exception as e:
-            logging.info(f"{ERROR} sshd -T failed: {e}")
+            logging.info(f"{ERROR} Unexpected failure running sshd -T: {e}")
             return False
         
         # Validate LogLevel
@@ -811,6 +823,7 @@ class SystemConfiguration:
         except Exception as e:
             logging.error(f"{ERROR} Error checking PVConfiguration.xml: {e}")
             return False
+
 
     @staticmethod
     def check_system_resources() -> str:
@@ -1374,91 +1387,91 @@ class RPMAutomation:
                 logging.error(f"{ERROR} Failed to recreate vault environment: {e}")
 
     @staticmethod
+    
     def deb_repair(psmp_version: str, psmp_short_version: str):
-        """Repair DEB installation for Ubuntu"""
+        """Automates the repair process for PSMP installations."""
         logging.info("\nPSMP DEB Installation Repair (Ubuntu 14.6+):")
         logging.info(f"PSMP Version Detected: {psmp_version}")
-        logging.info("Searching for installation files...")
-        
+        logging.info(f"Integrated mode: True")
+        logging.info("Searching the machine for version-matching installation files...")
+
+        def parse_version(s):
+            print(f"Parsing version from: {s}")
+            m = re.search(r'^(CARKpsmp)-((?:\d+\.)*\d+)\.amd64\.deb$', s)
+            if not m:
+                return (None, None, None)
+            name = m.group(1)
+            full_version = m.group(2)
+            parts = full_version.split(".")
+            if len(parts) < 2:
+                return (None, None, None)
+            build = parts[-1]
+            version = ".".join(parts[:-1])
+            return (name, version, build)
+
+        def check_debconf_and_prompt(deb_file_path):
+            result = subprocess.run(["debconf-show", "carkpsmp"], capture_output=True, text=True)
+            return bool(result.stdout.strip())
+
         try:
-            # Find DEB files efficiently
-            deb_files = []
-            for root, _, files in os.walk('/'):
-                # Skip trash and temp directories
-                if '/Trash/' in root or '/tmp/' in root:
-                    continue
-                
-                for file in files:
-                    if file.startswith('CARK') and file.endswith('.deb'):
-                        deb_files.append(os.path.join(root, file))
-            
-            # Parse version and find matching DEBs
-            name, ver, build = DEB_VERSION_PATTERN.match(psmp_version).groups() if DEB_VERSION_PATTERN.match(psmp_version) else (None, None, None)
-            
+            deb_files = [
+                os.path.join(root, file)
+                for root, _, files in os.walk('/')
+                for file in files
+                if file.startswith('CARK') and file.endswith('.deb') and '/Trash/files/' not in os.path.join(root, file)
+            ]
+
+            name, ver, build = parse_version(psmp_version)
             matching_debs = []
             for deb in deb_files:
-                parsed = DEB_VERSION_PATTERN.match(os.path.basename(deb))
+                parsed = parse_version(deb)
                 if parsed:
-                    deb_name, deb_ver, deb_build = parsed.groups()
-                    if (deb_name == name and deb_ver == ver and 
-                        deb_build == build and "infra" not in deb):
+                    deb_name, deb_ver, deb_build = parsed
+                    if deb_name == name and deb_ver == ver and deb_build == build and "infra" not in deb:
                         matching_debs.append(deb)
-            
+
             if not matching_debs:
                 logging.info(f"{ERROR} No DEB file found matching version {psmp_version}.")
                 return
-            
+
             deb_location = matching_debs[0]
             install_folder = os.path.dirname(deb_location)
             logging.info(f"Installation folder found at: {install_folder}")
-            
-            user_confirm = SecurityUtils.sanitize_input(
-                input(f"Is the installation folder {install_folder} correct? (y/n): ")
-            ).lower()
-            
-            if user_confirm not in ['y', 'yes']:
+
+            if input(f"Is the installation folder {install_folder} correct? (y/n): ").strip().lower() not in ['y', 'yes']:
                 logging.info("Installation folder not confirmed. Exiting.")
                 return
-            
+
             if not RPMAutomation.verify_installation_files(install_folder, psmp_short_version):
                 return
-            
+
             vault_address = SystemConfiguration.get_vault_address(VAULT_INI_PATH)
             SystemConfiguration.verify_vault_address(vault_address, VAULT_INI_PATH)
-            
-            # Check debconf
-            result = SecurityUtils.safe_subprocess_run(
-                ["debconf-show", "carkpsmp"],
-                check=False
-            )
-            
-            if not result.stdout.strip():
-                logging.info(f"\n{ERROR} Preconfiguration not found. Run:")
-                logging.info(f"  dpkg-preconfigure {deb_location}")
+
+            deb_file_path = os.path.join(install_folder, os.path.basename(deb_location))
+            if not check_debconf_and_prompt(deb_file_path):
+                logging.info(f"\n{ERROR} Preconfiguration file not found or not cached. Please run:\n  dpkg-preconfigure {deb_file_path}\n")
+                logging.info("Exiting the repair process. Please ensure to preconfigure the package before repairing.")
                 return
-            
-            logging.info(f"\n{SUCCESS} Preconfiguration found. Proceeding with repair.")
-            logging.info(f"\nInstalling DEB from: {deb_location}")
-            
-            # Install DEB
-            process = subprocess.Popen(
-                ["dpkg", "-i", "--force-all", deb_location],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True
-            )
+
+            logging.info(f"\n{SUCCESS} Preconfiguration file found, Proceeding with repairing.")
+            logging.info(f"\nInstalling DEB from: {deb_file_path}")
+
+            install_cmd = ["dpkg", "-i", "--force-all", deb_file_path]
+            process = subprocess.Popen(install_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             out, err = process.communicate()
-            
             for line in out.strip().splitlines():
                 logging.info(line)
             for line in err.strip().splitlines():
                 logging.error(line)
-            
-            # Recreate vault environment if needed
-            RPMAutomation.vault_env_recreate(psmp_short_version, install_folder)
-            
+
         except Exception as e:
-            logging.error(f"Error during DEB repair: {e}")
+            logging.error(f"An error occurred during the DEB repair process: {e}")
+            return
+        
+        # Step 7 New approach Vault env creation - Finalize PSMP installation
+        RPMAutomation.vault_env_recreate(psmp_short_version, install_folder)
+
 
     @staticmethod
     def rpm_repair(psmp_version: str, psmp_short_version: str):
