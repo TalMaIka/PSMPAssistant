@@ -1,5 +1,5 @@
 # Copyright: © 2025 CyberArk Community, Developed By Tal.M
-# Version: 1.2
+# Version: 1.3 (Enhanced)
 # Description: This tool performs a series of checks and operations related to CyberArk's Privileged Session Manager for SSH Proxy (PSMP) and SSHD configuration on Linux systems.
 
 import json
@@ -69,7 +69,7 @@ def parse_arguments():
     parser.add_argument(
         "--version",
         action="version",
-        version="PSMPAssistant v1.2 by Tal.M",
+        version="PSMPAssistant v1.3 (Enhanced) by Tal.M",
         help="Show program version and exit"
     )
 
@@ -129,8 +129,12 @@ class SecurityUtils:
             # Default to capturing output
             kwargs.setdefault('stdout', subprocess.PIPE)
             kwargs.setdefault('stderr', subprocess.PIPE)
-        kwargs.setdefault('text', True)
-        kwargs.setdefault('universal_newlines', True)  # Python 3.6 compat
+        
+        # Python 3.6 compatibility: only use universal_newlines, not text
+        # Remove 'text' if it exists (Python 3.7+) and use universal_newlines instead
+        if 'text' in kwargs:
+            kwargs.pop('text')
+        kwargs.setdefault('universal_newlines', True)  # This is the Python 3.6 way
         kwargs.setdefault('timeout', 30)  # Add timeout to prevent hanging
         
         try:
@@ -152,15 +156,12 @@ class Utility:
     # Logging to write to the dynamically named file and the console
     log_filename = datetime.now().strftime("PSMPAssistant-%m-%d-%y__%H-%M.log")
     
-    # Security: Use proper temp directory for log files
-    script_directory = os.path.dirname(os.path.abspath(__file__))
-    log_filepath = os.path.join(script_directory, log_filename)
-    
+    # Keep log file in script directory (maintaining original behavior)
     logging.basicConfig(
         level=logging.INFO,
         format='%(message)s',
         handlers=[
-            logging.FileHandler(log_filepath),
+            logging.FileHandler(log_filename),
             logging.StreamHandler()
         ]
     )
@@ -170,18 +171,22 @@ class Utility:
         """Clean ANSI escape codes from log file"""
         try:
             safe_path = SecurityUtils.sanitize_path(log_file_path)
-            
+
+            # Skip silently if file does not exist
+            if not os.path.exists(safe_path):
+                return
+
             # Read the log file
             with open(safe_path, 'r', encoding='utf-8', errors='ignore') as file:
                 content = file.read()
-            
+
             # Remove ANSI escape codes efficiently
             cleaned_content = ANSI_ESCAPE_PATTERN.sub('', content)
-            
+
             # Write back
             with open(safe_path, 'w', encoding='utf-8') as file:
                 file.write(cleaned_content)
-        
+
         except Exception as e:
             logging.error(f"{ERROR} Failed to clean log file: {e}")
 
@@ -640,24 +645,25 @@ class SystemConfiguration:
         integrated_psmp = SystemConfiguration.is_integrated(psmp_version)
         sshd_config_path = "/etc/ssh/sshd_config"
         
-        # Compile patterns once - make PSMP pattern more flexible
+        # Compile patterns once
         patterns = {
-            'psmp_auth': re.compile(r"#\s*PSMP\s+Authentication\s+Configuration\s+Block\s+Start", re.IGNORECASE),
-            'allow_user': re.compile(r"^\s*AllowUser", re.IGNORECASE),
-            'empty_pass': re.compile(r"^\s*PermitEmptyPasswords\s+yes", re.IGNORECASE),
-            'pubkey_auth': re.compile(r"^\s*PubkeyAuthentication\s+yes", re.IGNORECASE),
+            'psmp_auth': re.compile(r"# PSMP Authentication Configuration Block Start"),
+            'allow_user': re.compile(r"^\s*AllowUser"),
+            'empty_pass': re.compile(r"^\s*PermitEmptyPasswords\s+yes"),
+            'pubkey_auth': re.compile(r"^\s*PubkeyAuthentication\s+yes"),
             'include': re.compile(r"^\s*Include\s+(.*)"),
-            'managed': re.compile(r"(Ansible|Puppet|Chef)\s", re.IGNORECASE)
+            'managed': re.compile(r"(Ansible|Puppet|Chef)\s")
         }
         
         found_flags = {
             'psmp_auth_block': False,
             'allow_user': False,
+            'pubkey_accepted_algorithms': False,
             'permit_empty_pass': False,
             'pubkey_auth': False
         }
         
-        def collect_all_config_lines(main_path: str):
+        def collect_all_config_lines(main_path: str) -> List[Tuple[str, str]]:
             """Recursively collect all configuration lines"""
             all_lines = []
             processed_files = set()  # Prevent infinite loops
@@ -668,19 +674,18 @@ class SystemConfiguration:
                 processed_files.add(file_path)
                 
                 try:
-                    with open(file_path, "r") as f:
-                        for line_num, line in enumerate(f, 1):
-                            all_lines.append((file_path, line_num, line))
+                    safe_path = SecurityUtils.sanitize_path(file_path)
+                    with open(safe_path, "r") as f:
+                        for line in f:
+                            all_lines.append((file_path, line))
                             match = patterns['include'].match(line)
                             if match:
                                 include_path = match.group(1).strip()
                                 for inc_file in glob.glob(include_path):
                                     if os.path.isfile(inc_file):
                                         process_file(inc_file)
-                except FileNotFoundError as e:
+                except (FileNotFoundError, ValueError) as e:
                     logging.warning(f"{WARNING} Could not read SSH config file: {file_path} - {e}")
-                except Exception as e:
-                    logging.warning(f"{WARNING} Error processing file {file_path}: {e}")
             
             process_file(main_path)
             return all_lines
@@ -688,30 +693,22 @@ class SystemConfiguration:
         config_lines = collect_all_config_lines(sshd_config_path)
         
         # Process lines efficiently
-        for path, line_num, line in config_lines:
-            stripped_line = line.strip()
-            
-            # Check for managed configuration
+        for path, line in config_lines:
             if patterns['managed'].search(line):
-                logging.info(f"{WARNING} {path} is managed by: {stripped_line}")
+                logging.info(f"{WARNING} {path} is managed by: {line.strip()}")
             
-            # Check PSMP auth block regardless of comment status
-            if patterns['psmp_auth'].search(line):
-                found_flags['psmp_auth_block'] = True
-            
-            # Check non-comment lines for other patterns
-            if not stripped_line.startswith("#") and stripped_line:
-                if patterns['allow_user'].match(stripped_line):
+            if not line.lstrip().startswith("#"):
+                if patterns['psmp_auth'].search(line):
+                    found_flags['psmp_auth_block'] = True
+                if patterns['allow_user'].match(line):
                     found_flags['allow_user'] = True
-                
-                if patterns['empty_pass'].match(stripped_line):
+                if patterns['empty_pass'].match(line):
                     found_flags['permit_empty_pass'] = True
-                
-                if patterns['pubkey_auth'].match(stripped_line):
+                if patterns['pubkey_auth'].match(line):
                     found_flags['pubkey_auth'] = True
             
-            # Early exit if all critical flags found (optional optimization)
-            if found_flags['psmp_auth_block'] and found_flags['pubkey_auth']:
+            # Early exit if all flags found
+            if all(found_flags.values()):
                 break
         
         # Evaluate repair requirements
@@ -985,14 +982,14 @@ class SystemConfiguration:
                         
                         if user_input in ["yes", "y"]:
                             SecurityUtils.safe_subprocess_run(["setenforce", "0"])
-                            logging.info("SELinux enforcement disabled temporarily.")
+                            logging.info(f"{WARNING} SELinux enforcement disabled temporarily.")
                             return True
                     else:
-                        logging.info("No relevant SELinux denials found.")
+                        logging.info(f"{SUCCESS} No relevant SELinux denials found.")
                 else:
-                    logging.info("No SELinux denials found for PSMP.")
+                    logging.info(f"{SUCCESS} No SELinux denials found for PSMP.")
             else:
-                logging.info("SELinux not enforcing.")
+                logging.info(f"{WARNING} SELinux not enforcing.")
                 
         except Exception as e:
             logging.error(f"Error checking SELinux: {e}")
@@ -1312,12 +1309,15 @@ class RPMAutomation:
                 
                 subprocess.run([safe_cred_path, "user.cred"])
                 
-                # Move credential files
+                # Move credential files (overwrite if already exist)
                 for file in ["user.cred", "user.cred.entropy"]:
                     if os.path.exists(file):
-                        shutil.move(file, safe_folder)
+                        dest_file = os.path.join(safe_folder, file)
+                        if os.path.exists(dest_file):
+                            os.remove(dest_file)  # remove existing file before overwrite
+                        shutil.move(file, dest_file)
                 
-                logging.info(f"\n{SUCCESS} Credential files moved to installation folder.")
+                logging.info(f"\n{SUCCESS} Credential files moved to installation folder (overwritten if existed).")
                 return True
             else:
                 logging.info(f"\n{ERROR} CreateCredFile not found in {install_folder}")
@@ -1326,6 +1326,7 @@ class RPMAutomation:
         except Exception as e:
             logging.error(f"Error creating credential file: {e}")
             return False
+
 
     @staticmethod
     def vault_env_recreate(psmp_short_version: str, install_folder: str):
@@ -1656,12 +1657,12 @@ class SideFeatures:
     @staticmethod
     def generate_psmp_connection_string() -> str:
         """Generate PSMP connection string"""
-        logging.info("PSMP Connection String Generator")
-        logging.info("More info: https://cyberark.my.site.com/s/article/PSM-for-SSH-Syntax-Cheat-Sheet")
-        logging.info("\nProvide the following details:\n")
+        print("PSMP Connection String Generator")
+        print("More info: https://cyberark.my.site.com/s/article/PSM-for-SSH-Syntax-Cheat-Sheet")
+        print("\nProvide the following details:\n")
         
-        logging.info(f"{WARNING} MFA Caching requires FQDN of the Domain-Vault user.\n")
-        logging.info(f"{WARNING} Target user and target FQDN are case sensitive.\n")
+        print(f"{WARNING} MFA Caching requires FQDN of the Domain-Vault user.\n")
+        print(f"{WARNING} Target user and target FQDN are case sensitive.\n")
         
         # Collect and sanitize inputs
         vault_user = SecurityUtils.sanitize_input(input("Enter vault user: "))
@@ -1688,7 +1689,7 @@ class SideFeatures:
         
         connection_string += f"@{psm_address}"
         
-        logging.info(f"\n{SUCCESS} Generated PSMP Connection String:")
+        print(f"\n{SUCCESS} Generated PSMP Connection String:")
         return connection_string
 
     @staticmethod
@@ -1703,7 +1704,7 @@ class SideFeatures:
         sleep(2)
         
         # Clean assistant log
-        Utility.clean_log_file(Utility.log_filepath)
+        Utility.clean_log_file(Utility.log_filename)
         
         # Time threshold
         three_days_ago = datetime.now() - timedelta(days=3)
@@ -1867,6 +1868,7 @@ class PSMPAssistant:
             SideFeatures.logs_collect(args.skip_debug)
         elif args.action == "string":
             logging.info(SideFeatures.generate_psmp_connection_string())
+            Utility.delete_file(Utility.log_filename)
         elif args.action == "repair":
             if self.distro == "ubuntu":
                 RPMAutomation.deb_repair(self.psmp_version, self.psmp_short_version)
@@ -1886,7 +1888,7 @@ def main():
     psmp_assistant = PSMPAssistant()
     psmp_assistant.execute_command()
     
-    Utility.clean_log_file(Utility.log_filepath)
+    Utility.clean_log_file(Utility.log_filename)
 
 
 if __name__ == "__main__":
