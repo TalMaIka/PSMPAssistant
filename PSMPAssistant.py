@@ -153,7 +153,8 @@ class Utility:
     log_filename = datetime.now().strftime("PSMPAssistant-%m-%d-%y__%H-%M.log")
     
     # Security: Use proper temp directory for log files
-    log_filepath = os.path.join(tempfile.gettempdir(), log_filename)
+    script_directory = os.path.dirname(os.path.abspath(__file__))
+    log_filepath = os.path.join(script_directory, log_filename)
     
     logging.basicConfig(
         level=logging.INFO,
