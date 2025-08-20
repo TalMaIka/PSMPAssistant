@@ -1,5 +1,5 @@
 # Copyright: © 2025 CyberArk Community, Developed By Tal.M
-# Version: 1.3 (Enhanced)
+# Version: 1.2 (Ubuntu DEB Support 14.6+)
 # Description: This tool performs a series of checks and operations related to CyberArk's Privileged Session Manager for SSH Proxy (PSMP) and SSHD configuration on Linux systems.
 
 import json
@@ -69,7 +69,7 @@ def parse_arguments():
     parser.add_argument(
         "--version",
         action="version",
-        version="PSMPAssistant v1.3 (Enhanced) by Tal.M",
+        version="PSMPAssistant v1.2 (Ubuntu DEB Support 14.6+) by Tal.M",
         help="Show program version and exit"
     )
 
