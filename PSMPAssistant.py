@@ -46,7 +46,7 @@ RPM_VERSION_PATTERN = re.compile(r'(CARKpsmp)-(\d+\.\d+\.\d+)[-.](\d+)')
 DEB_VERSION_PATTERN = re.compile(r'^(CARKpsmp)-((?:\d+\.)*\d+)\.amd64\.deb$')
 VAULT_ADDRESS_PATTERN = re.compile(r'^ADDRESS=(.+)$', re.MULTILINE)
 
-# Command line arguments handler
+# Enhanced parse_arguments function
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="PSMPAssistant - CyberArk PSMP Diagnostic and Repair Tool"
@@ -64,6 +64,13 @@ def parse_arguments():
         "--skip-debug",
         action="store_true",
         help="Skip debug level check during log collection"
+    )
+
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=3,
+        help="Number of days to look back for log collection (default: 3)"
     )
 
     parser.add_argument(
@@ -1706,8 +1713,8 @@ class SideFeatures:
         return connection_string
 
     @staticmethod
-    def logs_collect(skip_debug: bool):
-        """Collect PSMP logs efficiently"""
+    def logs_collect(skip_debug: bool, days: int = 3):
+        """Collect PSMP logs efficiently with configurable time range"""
         logging.info("PSMP Logs Collection:\n")
         
         if not skip_debug:
@@ -1719,16 +1726,16 @@ class SideFeatures:
         # Clean assistant log
         Utility.clean_log_file(Utility.log_filename)
         
-        # Time threshold
-        three_days_ago = datetime.now() - timedelta(days=3)
+        # Time threshold - now configurable
+        time_threshold = datetime.now() - timedelta(days=days)
         
         def is_recent_file(file_path: str) -> bool:
-            """Check if file was modified in last 3 days"""
+            """Check if file was modified within the specified time range"""
             try:
                 safe_path = SecurityUtils.sanitize_path(file_path)
                 if os.path.isfile(safe_path):
                     mtime = os.path.getmtime(safe_path)
-                    return datetime.fromtimestamp(mtime) >= three_days_ago
+                    return datetime.fromtimestamp(mtime) >= time_threshold
             except:
                 pass
             return False
@@ -1749,7 +1756,7 @@ class SideFeatures:
         log_files_to_collect = [f for f in glob.glob(log_pattern) if is_recent_file(f)]
         
         # Display what will be collected
-        logging.info("\nThe following will be collected:\n")
+        logging.info(f"\nThe following will be collected (from the last {days} days):\n")
         for folder in log_folders:
             logging.info(folder)
         for log_file in log_files_to_collect:
@@ -1793,7 +1800,7 @@ class SideFeatures:
                     os.makedirs(dest_path, exist_ok=True)
                     
                     if folder.startswith("/var/opt/CARKpsmp/logs"):
-                        # Filter by recent files
+                        # Filter by specified time range
                         psmp_dest = os.path.join(psmp_logs_directory, "PSMP")
                         os.makedirs(psmp_dest, exist_ok=True)
                         
@@ -1839,9 +1846,9 @@ class SideFeatures:
                     except Exception as e:
                         logging.error(f"Failed to execute: {command} - {e}")
                 
-                # Create zip file
+                # Create zip file with days information in filename
                 current_date = datetime.now().strftime("%m-%d-%y_%H-%M")
-                zip_filename = f"PSMPAssistant_Logs-{current_date}.zip"
+                zip_filename = f"PSMPAssistant_Logs-{days}days-{current_date}.zip"
                 
                 with zipfile.ZipFile(zip_filename, "w", zipfile.ZIP_DEFLATED) as zipf:
                     for root, _, files in os.walk(psmp_logs_directory):
@@ -1878,7 +1885,8 @@ class PSMPAssistant:
         args = parse_arguments()
         
         if args.action == "logs":
-            SideFeatures.logs_collect(args.skip_debug)
+            # Pass the days parameter to logs_collect
+            SideFeatures.logs_collect(args.skip_debug, args.days)
         elif args.action == "string":
             logging.info(SideFeatures.generate_psmp_connection_string())
             Utility.delete_file(Utility.log_filename)
