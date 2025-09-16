@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 import signal
 import glob
 import argparse
-import hashlib
+import errno
 import tempfile
 from pathlib import Path
 from functools import lru_cache
@@ -149,8 +149,10 @@ class SecurityUtils:
         except subprocess.TimeoutExpired:
             logging.error(f"{ERROR} Command timed out: {' '.join(cmd)}")
             raise
+        except FileNotFoundError:
+                    pass # ignore silently
         except Exception as e:
-            logging.error(f"{ERROR} Command failed: {' '.join(cmd)} - {e}")
+            logging.error(f"{WARNING} Command failed: {' '.join(cmd)} - {e}")
             raise
 
 
@@ -1843,8 +1845,21 @@ class SideFeatures:
                         with open(command_file_path, 'w') as f:
                             f.write(result.stdout)
                             
+                    except FileNotFoundError:
+                        # Ignore missing file/directory
+                        pass
+
                     except Exception as e:
-                        logging.error(f"Failed to execute: {command} - {e}")
+                        msg = str(e)
+
+                        # Ignore NoneType .stdout error
+                        if "NoneType" in msg and "stdout" in msg:
+                            pass
+                        # Ignore also if it's an OSError with Errno 2
+                        elif hasattr(e, "errno") and e.errno == errno.ENOENT:
+                            pass
+                        else:
+                            logging.error(f"Failed to execute: {command} - {msg}")
                 
                 # Create zip file with days information in filename
                 current_date = datetime.now().strftime("%m-%d-%y_%H-%M")
@@ -1860,7 +1875,7 @@ class SideFeatures:
                 logging.info(f"Logs collected: {zip_filename}")
                 
             except Exception as e:
-                logging.error(f"Error collecting logs: {e}")
+                logging.error(f"Error collecting logs: {e})")
 
 
 class PSMPAssistant:
